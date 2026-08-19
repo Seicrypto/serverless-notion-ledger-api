@@ -2,7 +2,11 @@
   "name": "notion-ledger-api",
   "version": "0.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
+    "check": "tsc --noEmit",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
@@ -12,5 +16,11 @@
     "@types/node": "^26.2.0",
     "typescript": "^5.5.2",
     "wrangler": "^4.124.0"
+  },
+  "dependencies": {
+    "@hono/swagger-ui": "^0.6.1",
+    "@hono/zod-openapi": "^1.6.0",
+    "hono": "^4.13.3",
+    "zod": "^4.4.3"
   }
 }
