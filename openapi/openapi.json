@@ -171,6 +171,71 @@
           "message"
         ]
       },
+      "AuthMeResponse": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "properties": {
+              "displayName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "emailVerifiedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "isStaff": {
+                "type": "boolean"
+              },
+              "staffRole": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "admin",
+                  "staff",
+                  null
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending_verification",
+                  "pending_approval",
+                  "active",
+                  "disabled"
+                ]
+              }
+            },
+            "required": [
+              "displayName",
+              "email",
+              "emailVerifiedAt",
+              "id",
+              "isStaff",
+              "staffRole",
+              "status"
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ]
+      },
       "VerifyEmailResponse": {
         "type": "object",
         "properties": {
@@ -495,6 +560,45 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LogoutResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Current authenticated user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthMeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated account is not active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }

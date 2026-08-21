@@ -5,9 +5,15 @@ import { ForgotPasswordService } from "../../services/auth/forgot-password-servi
 import { LoginService } from "../../services/auth/login-service";
 import { RegisterService } from "../../services/auth/register-service";
 import { ResetPasswordService } from "../../services/auth/reset-password-service";
+import { SessionAuthService } from "../../services/auth/session-auth-service";
 import { VerifyEmailService } from "../../services/auth/verify-email-service";
-import { clearSessionCookie, setSessionCookie } from "../../lib/session-cookie";
 import {
+  clearSessionCookie,
+  getSessionCookie,
+  setSessionCookie,
+} from "../../lib/session-cookie";
+import {
+  authMeRoute,
   forgotPasswordRoute,
   loginRoute,
   logoutRoute,
@@ -18,22 +24,26 @@ import {
 
 export const authRouter = new OpenAPIHono<AppBindings>();
 
+function validationErrorFromIssues(
+  issues: Array<{ message: string; path: PropertyKey[] }>,
+  defaultPath: "body" | "query" | "params",
+) {
+  return {
+    error: "Validation failed",
+    issues: issues.map((issue) => {
+      const path = issue.path.map(String).join(".") || defaultPath;
+      return `${path}: ${issue.message}`;
+    }),
+  };
+}
+
 authRouter.openapi(registerRoute, async (c) => {
   const schema = registerRoute.request.body.content["application/json"].schema;
   const payload = await c.req.json();
   const parsed = schema.safeParse(payload);
 
   if (!parsed.success) {
-    return c.json(
-      {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((issue) => {
-          const path = issue.path.join(".") || "body";
-          return `${path}: ${issue.message}`;
-        }),
-      },
-      422,
-    );
+    return c.json(validationErrorFromIssues(parsed.error.issues, "body"), 422);
   }
 
   try {
@@ -64,16 +74,7 @@ authRouter.openapi(loginRoute, async (c) => {
   const parsed = schema.safeParse(payload);
 
   if (!parsed.success) {
-    return c.json(
-      {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((issue) => {
-          const path = issue.path.join(".") || "body";
-          return `${path}: ${issue.message}`;
-        }),
-      },
-      422,
-    );
+    return c.json(validationErrorFromIssues(parsed.error.issues, "body"), 422);
   }
 
   try {
@@ -110,20 +111,39 @@ authRouter.openapi(logoutRoute, async (c) => {
   );
 });
 
+authRouter.openapi(authMeRoute, async (c) => {
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
+
+    return c.json(
+      {
+        user: {
+          displayName: session.user.display_name,
+          email: session.user.email,
+          emailVerifiedAt: session.user.email_verified_at,
+          id: session.user.id,
+          isStaff: session.staff !== null,
+          staffRole: session.staff?.role ?? null,
+          status: session.user.status,
+        },
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json({ error: error.message }, error.status as 401 | 403);
+    }
+
+    throw error;
+  }
+});
+
 authRouter.openapi(verifyEmailRoute, async (c) => {
   const parsed = verifyEmailRoute.request.query.safeParse(c.req.query());
 
   if (!parsed.success) {
-    return c.json(
-      {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((issue) => {
-          const path = issue.path.join(".") || "query";
-          return `${path}: ${issue.message}`;
-        }),
-      },
-      422,
-    );
+    return c.json(validationErrorFromIssues(parsed.error.issues, "query"), 422);
   }
 
   try {
@@ -155,16 +175,7 @@ authRouter.openapi(forgotPasswordRoute, async (c) => {
   const parsed = schema.safeParse(payload);
 
   if (!parsed.success) {
-    return c.json(
-      {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((issue) => {
-          const path = issue.path.join(".") || "body";
-          return `${path}: ${issue.message}`;
-        }),
-      },
-      422,
-    );
+    return c.json(validationErrorFromIssues(parsed.error.issues, "body"), 422);
   }
 
   const service = new ForgotPasswordService(c.env);
@@ -185,16 +196,7 @@ authRouter.openapi(resetPasswordRoute, async (c) => {
   const parsed = schema.safeParse(payload);
 
   if (!parsed.success) {
-    return c.json(
-      {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((issue) => {
-          const path = issue.path.join(".") || "body";
-          return `${path}: ${issue.message}`;
-        }),
-      },
-      422,
-    );
+    return c.json(validationErrorFromIssues(parsed.error.issues, "body"), 422);
   }
 
   try {
