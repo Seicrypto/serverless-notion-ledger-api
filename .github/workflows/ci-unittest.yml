@@ -1,0 +1,64 @@
+name: CI Unit Test
+
+on:
+  workflow_call:
+
+jobs:
+  ci-unittest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run type check
+        id: check
+        continue-on-error: true
+        run: npm run check
+
+      - name: Run repository tests
+        id: test_repositories
+        continue-on-error: true
+        run: npm run test:repositories
+
+      - name: Summarize CI results
+        if: always()
+        run: |
+          failures=0
+
+          echo "## CI Result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ steps.check.outcome }}" != "success" ]; then
+            echo "- \`npm run check\` failed" >> "$GITHUB_STEP_SUMMARY"
+            failures=1
+          else
+            echo "- \`npm run check\` passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "${{ steps.test_repositories.outcome }}" != "success" ]; then
+            echo "- \`npm run test:repositories\` failed" >> "$GITHUB_STEP_SUMMARY"
+            failures=1
+          else
+            echo "- \`npm run test:repositories\` passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$failures" -ne 0 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "One or more CI checks failed." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "All CI checks passed." >> "$GITHUB_STEP_SUMMARY"

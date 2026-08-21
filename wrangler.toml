@@ -1,0 +1,36 @@
+name = "notion-ledger-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-19"
+upload_source_maps = true
+
+[secrets]
+required = ["JWT_SECRET", "PASSWORD_PEPPER", "RESEND_API_KEY"]
+
+[observability]
+enabled = true
+
+[vars]
+APP_ENV = "development"
+APP_BASE_URL = "http://localhost:8787"
+NOTION_API_BASE_URL = "https://api.notion.com"
+NOTION_API_VERSION = "2022-06-28"
+OFFICIAL_ADMIN_EMAILS = ""
+RESEND_FROM_EMAIL = "Raid Ledger <no-reply@example.com>"
+
+[[kv_namespaces]]
+binding = "SNAPSHOT_CACHE"
+id = "289ea288fd9a49c7b01be532be9a6ab0"
+
+[[d1_databases]]
+binding = "APP_DB"
+database_name = "raidledger_d1_prod"
+database_id = "54508ced-2be2-4237-b5c8-a552129e75bc"
+migrations_dir = "migrations"
+
+[[durable_objects.bindings]]
+name = "NOTION_GATEWAY"
+class_name = "NotionGateway"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["NotionGateway"]

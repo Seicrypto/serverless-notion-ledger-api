@@ -1,1 +1,72 @@
 # serverless-notion-ledger-api
+
+Cloudflare Worker API for the Raid Ledger project. The current stack uses:
+
+- `Cloudflare Workers`
+- `D1`
+- `KV`
+- `Durable Objects`
+- `Hono + zod-openapi`
+- `Resend`
+
+## First Deploy Checklist
+
+After the Worker has been deployed once and exists in Cloudflare, configure the following runtime values in the Worker dashboard.
+
+### Secrets
+
+Set these in:
+
+- Cloudflare Dashboard
+- `Workers & Pages`
+- select this Worker
+- `Settings`
+- `Variables and Secrets`
+
+Required secrets:
+
+- `RESEND_API_KEY`
+- `JWT_SECRET`
+- `PASSWORD_PEPPER`
+
+### Vars
+
+Set these as normal Worker variables:
+
+- `APP_BASE_URL`
+  - Example: `https://api.example.com`
+- `RESEND_FROM_EMAIL`
+  - Example: `Raid Ledger <no-reply@mail.sideweaver.com>`
+- `OFFICIAL_ADMIN_EMAILS`
+  - Comma-separated whitelist emails
+  - Example: `you@example.com,another-admin@example.com`
+
+## Notes
+
+- `RESEND_API_KEY` must be configured on the Worker runtime. A GitHub secret alone is not enough for runtime email sending.
+- `OFFICIAL_ADMIN_EMAILS` is treated as configuration, not a secret. It can be injected during deployment or set in the Cloudflare dashboard.
+- `wrangler.toml` declares required secrets so deploys fail early if they are missing.
+
+## OpenAPI Export
+
+The Hono app already serves a live OpenAPI document at `/openapi.json`, but frontend code generation usually works better with a committed or generated static file.
+
+The generated document is currently **OpenAPI 3.1.0**.
+
+Generate a static OpenAPI JSON file with:
+
+```bash
+npm run openapi:export
+```
+
+By default it writes to:
+
+```text
+openapi/openapi.json
+```
+
+You can also pass a custom output path:
+
+```bash
+node scripts/run-ts-entry.mjs scripts/export-openapi.ts ./some/path/openapi.json
+```
