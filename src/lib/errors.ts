@@ -14,3 +14,24 @@ export class ConfigurationError extends AppError {
     this.name = "ConfigurationError";
   }
 }
+
+export class ConflictError extends AppError {
+  constructor(message: string) {
+    super(message, 409);
+    this.name = "ConflictError";
+  }
+}
+
+export class UnauthorizedError extends AppError {
+  constructor(message: string) {
+    super(message, 401);
+    this.name = "UnauthorizedError";
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message: string) {
+    super(message, 403);
+    this.name = "ForbiddenError";
+  }
+}

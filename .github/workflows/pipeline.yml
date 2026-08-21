@@ -1,0 +1,13 @@
+name: Pipeline
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci-unittest:
+    uses: ./.github/workflows/ci-unittest.yml
+
+  upload-openapi-artifact:
+    needs: ci-unittest
+    uses: ./.github/workflows/upload-openapi-artifact.yml

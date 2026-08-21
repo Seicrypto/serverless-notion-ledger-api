@@ -11,6 +11,7 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
+    "openapi:export": "node scripts/run-ts-entry.mjs scripts/export-openapi.ts",
     "test:repositories": "node scripts/run-ts-tests.mjs tests/repositories.test.ts tests/repositories-official-staffs.test.ts"
   },
   "devDependencies": {

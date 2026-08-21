@@ -29,3 +29,14 @@ export const errorSchema = z
     }),
   })
   .openapi("ErrorResponse");
+
+export const validationErrorSchema = z
+  .object({
+    error: z.string().openapi({
+      example: "Validation failed",
+    }),
+    issues: z.array(z.string()).openapi({
+      example: ["email: Invalid email"],
+    }),
+  })
+  .openapi("ValidationErrorResponse");

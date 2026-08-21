@@ -3,6 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2026-08-19"
 upload_source_maps = true
 
+[secrets]
+required = ["JWT_SECRET", "PASSWORD_PEPPER", "RESEND_API_KEY"]
+
 [observability]
 enabled = true
 

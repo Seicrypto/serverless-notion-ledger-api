@@ -54,6 +54,24 @@ export class UsersRepository {
     return this.db.all<UserRecord>(`SELECT * FROM users ORDER BY id ASC`);
   }
 
+  async setPasswordHash(id: number, passwordHash: string): Promise<UserRecord> {
+    const updated = await this.db.first<UserRecord>(
+      `UPDATE users
+       SET password_hash = ?, updated_at = ?
+       WHERE id = ?
+       RETURNING *`,
+      passwordHash,
+      nowIso(),
+      id,
+    );
+
+    if (!updated) {
+      throw new Error(`Failed to update password hash for user ${id}`);
+    }
+
+    return updated;
+  }
+
   async update(id: number, input: UpdateUserInput): Promise<UserRecord> {
     const existing = await this.findByIdOrThrow(id);
 

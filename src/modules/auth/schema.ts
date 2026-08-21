@@ -29,6 +29,71 @@ const registerResponseSchema = z
   })
   .openapi("RegisterResponse");
 
+const verifyEmailQuerySchema = z
+  .object({
+    key: z.string().min(1),
+    token: z.string().min(1),
+  })
+  .openapi("VerifyEmailQuery");
+
+const verifyEmailResponseSchema = z
+  .object({
+    email: z.string().email(),
+    message: z.string(),
+    status: z.enum(["pending_approval", "active"]),
+    userId: z.number().int().positive(),
+  })
+  .openapi("VerifyEmailResponse");
+
+const forgotPasswordRequestSchema = z
+  .object({
+    email: z.string().trim().email(),
+  })
+  .openapi("ForgotPasswordRequest");
+
+const forgotPasswordResponseSchema = z
+  .object({
+    message: z.string(),
+  })
+  .openapi("ForgotPasswordResponse");
+
+const resetPasswordRequestSchema = z
+  .object({
+    key: z.string().min(1),
+    password: z.string().min(8).max(128),
+    token: z.string().min(1),
+  })
+  .openapi("ResetPasswordRequest");
+
+const resetPasswordResponseSchema = z
+  .object({
+    email: z.string().email(),
+    message: z.string(),
+    userId: z.number().int().positive(),
+  })
+  .openapi("ResetPasswordResponse");
+
+const loginRequestSchema = z
+  .object({
+    email: z.string().trim().email(),
+    password: z.string().min(8).max(128),
+  })
+  .openapi("LoginRequest");
+
+const loginResponseSchema = z
+  .object({
+    email: z.string().email(),
+    message: z.string(),
+    userId: z.number().int().positive(),
+  })
+  .openapi("LoginResponse");
+
+const logoutResponseSchema = z
+  .object({
+    message: z.string(),
+  })
+  .openapi("LogoutResponse");
+
 export const registerRoute = createRoute({
   method: "post",
   path: "/register",
@@ -83,14 +148,115 @@ export const loginRoute = createRoute({
   method: "post",
   path: "/login",
   tags: ["Auth"],
-  responses: {
-    501: {
+  request: {
+    body: {
       content: {
         "application/json": {
-          schema: messageSchema,
+          schema: loginRequestSchema,
         },
       },
-      description: "Login flow placeholder.",
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: loginResponseSchema,
+        },
+      },
+      description: "Login succeeded.",
+    },
+    401: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Invalid credentials.",
+    },
+    403: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Account is not allowed to log in.",
+    },
+    422: {
+      content: {
+        "application/json": {
+          schema: validationErrorSchema,
+        },
+      },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const logoutRoute = createRoute({
+  method: "post",
+  path: "/logout",
+  tags: ["Auth"],
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: logoutResponseSchema,
+        },
+      },
+      description: "Logout succeeded.",
+    },
+  },
+});
+
+export const verifyEmailRoute = createRoute({
+  method: "get",
+  path: "/verify-email",
+  tags: ["Auth"],
+  request: {
+    query: verifyEmailQuerySchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: verifyEmailResponseSchema,
+        },
+      },
+      description: "Email verified successfully.",
+    },
+    400: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Verification token is invalid or expired.",
+    },
+    403: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "User cannot verify email.",
+    },
+    404: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "User not found.",
+    },
+    422: {
+      content: {
+        "application/json": {
+          schema: validationErrorSchema,
+        },
+      },
+      description: "Validation failed.",
     },
   },
 });
@@ -99,14 +265,90 @@ export const forgotPasswordRoute = createRoute({
   method: "post",
   path: "/forgot-password",
   tags: ["Auth"],
-  responses: {
-    501: {
+  request: {
+    body: {
       content: {
         "application/json": {
-          schema: messageSchema,
+          schema: forgotPasswordRequestSchema,
         },
       },
-      description: "Password reset flow placeholder.",
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: forgotPasswordResponseSchema,
+        },
+      },
+      description: "Password reset flow accepted.",
+    },
+    422: {
+      content: {
+        "application/json": {
+          schema: validationErrorSchema,
+        },
+      },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const resetPasswordRoute = createRoute({
+  method: "post",
+  path: "/reset-password",
+  tags: ["Auth"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: resetPasswordRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: resetPasswordResponseSchema,
+        },
+      },
+      description: "Password updated successfully.",
+    },
+    400: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Reset token is invalid or expired.",
+    },
+    403: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "User cannot reset password.",
+    },
+    404: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "User not found.",
+    },
+    422: {
+      content: {
+        "application/json": {
+          schema: validationErrorSchema,
+        },
+      },
+      description: "Validation failed.",
     },
   },
 });

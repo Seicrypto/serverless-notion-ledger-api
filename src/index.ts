@@ -1,4 +1,5 @@
-import { createApp, NotionGateway } from "./app";
+import { createApp } from "./app";
+import { NotionGateway } from "./durable-objects/notion-gateway";
 
 const app = createApp();
 
