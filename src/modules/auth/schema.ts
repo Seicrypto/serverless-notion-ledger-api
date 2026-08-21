@@ -94,6 +94,25 @@ const logoutResponseSchema = z
   })
   .openapi("LogoutResponse");
 
+const authMeResponseSchema = z
+  .object({
+    user: z.object({
+      displayName: z.string().nullable(),
+      email: z.string().email(),
+      emailVerifiedAt: z.string().nullable(),
+      id: z.number().int().positive(),
+      isStaff: z.boolean(),
+      staffRole: z.enum(["admin", "staff"]).nullable(),
+      status: z.enum([
+        "pending_verification",
+        "pending_approval",
+        "active",
+        "disabled",
+      ]),
+    }),
+  })
+  .openapi("AuthMeResponse");
+
 export const registerRoute = createRoute({
   method: "post",
   path: "/register",
@@ -206,6 +225,38 @@ export const logoutRoute = createRoute({
         },
       },
       description: "Logout succeeded.",
+    },
+  },
+});
+
+export const authMeRoute = createRoute({
+  method: "get",
+  path: "/me",
+  tags: ["Auth"],
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: authMeResponseSchema,
+        },
+      },
+      description: "Current authenticated user.",
+    },
+    401: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Authentication required.",
+    },
+    403: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Authenticated account is not active.",
     },
   },
 });

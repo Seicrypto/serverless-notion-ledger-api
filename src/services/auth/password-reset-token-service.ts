@@ -76,6 +76,6 @@ export class PasswordResetTokenService {
   }
 
   keyFor(userId: number, tokenId: string): string {
-    return `password-reset:${userId}:${tokenId}`;
+    return `auth:password-reset:${userId}:${tokenId}`;
   }
 }

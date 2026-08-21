@@ -76,6 +76,6 @@ export class EmailVerificationTokenService {
   }
 
   keyFor(userId: number, tokenId: string): string {
-    return `email-verify:${userId}:${tokenId}`;
+    return `auth:email-verify:${userId}:${tokenId}`;
   }
 }

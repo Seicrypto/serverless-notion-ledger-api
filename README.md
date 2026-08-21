@@ -46,6 +46,7 @@ Set these as normal Worker variables:
 - `RESEND_API_KEY` must be configured on the Worker runtime. A GitHub secret alone is not enough for runtime email sending.
 - `OFFICIAL_ADMIN_EMAILS` is treated as configuration, not a secret. It can be injected during deployment or set in the Cloudflare dashboard.
 - `wrangler.toml` declares required secrets so deploys fail early if they are missing.
+- KV naming and TTL strategy are documented in [docs/kv-key-strategy.md](/Users/sei/Documents/GitHub/serverless-notion-ledger-api/docs/kv-key-strategy.md).
 
 ## OpenAPI Export
 
