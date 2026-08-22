@@ -35,8 +35,19 @@ jobs:
           npm run check
           npm run test:repositories
 
+      - name: Build Worker secrets file
+        run: |
+          printf 'JWT_SECRET=%s\nPASSWORD_PEPPER=%s\nRESEND_API_KEY=%s\n' \
+            "$JWT_SECRET" \
+            "$PASSWORD_PEPPER" \
+            "$RESEND_API_KEY" > .deploy-secrets
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          PASSWORD_PEPPER: ${{ secrets.PASSWORD_PEPPER }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
       - name: Deploy Worker
-        run: npx wrangler deploy
+        run: npx wrangler deploy --secrets-file .deploy-secrets
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
