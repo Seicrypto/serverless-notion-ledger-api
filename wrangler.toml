@@ -14,8 +14,8 @@ APP_ENV = "development"
 APP_BASE_URL = "http://localhost:8787"
 NOTION_API_BASE_URL = "https://api.notion.com"
 NOTION_API_VERSION = "2022-06-28"
-OFFICIAL_ADMIN_EMAILS = ""
-RESEND_FROM_EMAIL = "Raid Ledger <no-reply@example.com>"
+OFFICIAL_ADMIN_EMAILS = "seikanchintw@gmail.com"
+RESEND_FROM_EMAIL = "Raid Ledger <no-reply@sideweaver.com>"
 
 [[kv_namespaces]]
 binding = "SNAPSHOT_CACHE"
