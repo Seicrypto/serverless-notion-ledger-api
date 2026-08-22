@@ -10,8 +10,8 @@ required = ["JWT_SECRET", "PASSWORD_PEPPER", "RESEND_API_KEY"]
 enabled = true
 
 [vars]
-APP_ENV = "development"
-APP_BASE_URL = "http://localhost:8787"
+APP_ENV = "production"
+APP_BASE_URL = "https://notion-ledger-api.seikanchintw.workers.dev"
 NOTION_API_BASE_URL = "https://api.notion.com"
 NOTION_API_VERSION = "2022-06-28"
 OFFICIAL_ADMIN_EMAILS = "seikanchintw@gmail.com"
