@@ -1,6 +1,10 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { AppBindings } from "../../types/hono";
-import { AppError } from "../../lib/errors";
+import {
+  AppError,
+  buildErrorResponseBody,
+  ensureRequestId,
+} from "../../lib/errors";
 import { ForgotPasswordService } from "../../services/auth/forgot-password-service";
 import { LoginService } from "../../services/auth/login-service";
 import { RegisterService } from "../../services/auth/register-service";
@@ -27,13 +31,16 @@ export const authRouter = new OpenAPIHono<AppBindings>();
 function validationErrorFromIssues(
   issues: Array<{ message: string; path: PropertyKey[] }>,
   defaultPath: "body" | "query" | "params",
+  requestId: string,
 ) {
   return {
+    code: "VALIDATION_ERROR",
     error: "Validation failed",
     issues: issues.map((issue) => {
       const path = issue.path.map(String).join(".") || defaultPath;
       return `${path}: ${issue.message}`;
     }),
+    requestId,
   };
 }
 
@@ -43,7 +50,10 @@ authRouter.openapi(registerRoute, async (c) => {
   const parsed = schema.safeParse(payload);
 
   if (!parsed.success) {
-    return c.json(validationErrorFromIssues(parsed.error.issues, "body"), 422);
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "body", ensureRequestId(c)),
+      422,
+    );
   }
 
   try {
@@ -61,7 +71,7 @@ authRouter.openapi(registerRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json({ error: error.message }, error.status as 409 | 500);
+      return c.json(buildErrorResponseBody(c, error), error.status as 409 | 500);
     }
 
     throw error;
@@ -74,7 +84,10 @@ authRouter.openapi(loginRoute, async (c) => {
   const parsed = schema.safeParse(payload);
 
   if (!parsed.success) {
-    return c.json(validationErrorFromIssues(parsed.error.issues, "body"), 422);
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "body", ensureRequestId(c)),
+      422,
+    );
   }
 
   try {
@@ -93,7 +106,7 @@ authRouter.openapi(loginRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json({ error: error.message }, error.status as 401 | 403);
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403);
     }
 
     throw error;
@@ -132,7 +145,7 @@ authRouter.openapi(authMeRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json({ error: error.message }, error.status as 401 | 403);
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403);
     }
 
     throw error;
@@ -143,7 +156,10 @@ authRouter.openapi(verifyEmailRoute, async (c) => {
   const parsed = verifyEmailRoute.request.query.safeParse(c.req.query());
 
   if (!parsed.success) {
-    return c.json(validationErrorFromIssues(parsed.error.issues, "query"), 422);
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "query", ensureRequestId(c)),
+      422,
+    );
   }
 
   try {
@@ -162,7 +178,10 @@ authRouter.openapi(verifyEmailRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json({ error: error.message }, error.status as 400 | 403 | 404);
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 400 | 403 | 404,
+      );
     }
 
     throw error;
@@ -175,7 +194,10 @@ authRouter.openapi(forgotPasswordRoute, async (c) => {
   const parsed = schema.safeParse(payload);
 
   if (!parsed.success) {
-    return c.json(validationErrorFromIssues(parsed.error.issues, "body"), 422);
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "body", ensureRequestId(c)),
+      422,
+    );
   }
 
   const service = new ForgotPasswordService(c.env);
@@ -196,7 +218,10 @@ authRouter.openapi(resetPasswordRoute, async (c) => {
   const parsed = schema.safeParse(payload);
 
   if (!parsed.success) {
-    return c.json(validationErrorFromIssues(parsed.error.issues, "body"), 422);
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "body", ensureRequestId(c)),
+      422,
+    );
   }
 
   try {
@@ -212,7 +237,10 @@ authRouter.openapi(resetPasswordRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json({ error: error.message }, error.status as 400 | 403 | 404);
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 400 | 403 | 404,
+      );
     }
 
     throw error;

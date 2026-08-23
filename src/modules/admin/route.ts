@@ -1,6 +1,10 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { AppBindings } from "../../types/hono";
-import { AppError } from "../../lib/errors";
+import {
+  AppError,
+  buildErrorResponseBody,
+  ensureRequestId,
+} from "../../lib/errors";
 import { getSessionCookie } from "../../lib/session-cookie";
 import { ManageUserStatusService } from "../../services/admin/manage-user-status-service";
 import { SessionAuthService } from "../../services/auth/session-auth-service";
@@ -15,13 +19,16 @@ export const adminRouter = new OpenAPIHono<AppBindings>();
 
 function validationErrorFromIssues(
   issues: Array<{ message: string; path: PropertyKey[] }>,
+  requestId: string,
 ) {
   return {
+    code: "VALIDATION_ERROR",
     error: "Validation failed",
     issues: issues.map((issue) => {
       const path = issue.path.map(String).join(".") || "params";
       return `${path}: ${issue.message}`;
     }),
+    requestId,
   };
 }
 
@@ -46,7 +53,7 @@ adminRouter.openapi(listPendingUsersRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json({ error: error.message }, error.status as 401 | 403);
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403);
     }
 
     throw error;
@@ -62,7 +69,10 @@ function registerManagedUserAction(
     const parsed = route.request.params.safeParse(c.req.param());
 
     if (!parsed.success) {
-      return c.json(validationErrorFromIssues(parsed.error.issues), 422);
+      return c.json(
+        validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+        422,
+      );
     }
 
     try {
@@ -87,7 +97,7 @@ function registerManagedUserAction(
     } catch (error) {
       if (error instanceof AppError) {
         return c.json(
-          { error: error.message },
+          buildErrorResponseBody(c, error),
           error.status as 400 | 401 | 403 | 404,
         );
       }

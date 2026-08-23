@@ -3,6 +3,7 @@ import { swaggerUI } from "@hono/swagger-ui";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { assertCoreBindings } from "./lib/env";
+import { AppError, ensureRequestId, errorResponse } from "./lib/errors";
 import { authRouter } from "./modules/auth/route";
 import { adminRouter } from "./modules/admin/route";
 import { dashboardRouter } from "./modules/dashboard/route";
@@ -59,10 +60,12 @@ export function createApp() {
 
   app.use(async (c, next) => {
     assertCoreBindings(c.env);
+    ensureRequestId(c);
     const origin = c.req.header("Origin");
 
     if (c.req.method === "OPTIONS") {
       const headers = getCorsHeaders(origin) ?? new Headers();
+      headers.set("X-Request-Id", ensureRequestId(c));
       return new Response(null, {
         headers,
         status: 204,
@@ -95,11 +98,15 @@ export function createApp() {
 
   app.onError((error, c) => {
     if (error instanceof HTTPException) {
-      return c.json({ error: error.message }, error.status);
+      return errorResponse(
+        c,
+        new AppError(error.message, error.status, {
+          code: "HTTP_EXCEPTION",
+        }),
+      );
     }
 
-    console.error(error);
-    return c.json({ error: "Internal Server Error" }, 500);
+    return errorResponse(c, error);
   });
 
   return app;
