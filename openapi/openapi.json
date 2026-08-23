@@ -67,18 +67,32 @@
       "ErrorResponse": {
         "type": "object",
         "properties": {
+          "code": {
+            "type": "string",
+            "example": "INTERNAL_SERVER_ERROR"
+          },
           "error": {
             "type": "string",
             "example": "Internal Server Error"
+          },
+          "requestId": {
+            "type": "string",
+            "example": "6d7c5b45f4ae4c01"
           }
         },
         "required": [
-          "error"
+          "code",
+          "error",
+          "requestId"
         ]
       },
       "ValidationErrorResponse": {
         "type": "object",
         "properties": {
+          "code": {
+            "type": "string",
+            "example": "VALIDATION_ERROR"
+          },
           "error": {
             "type": "string",
             "example": "Validation failed"
@@ -91,11 +105,17 @@
             "example": [
               "email: Invalid email"
             ]
+          },
+          "requestId": {
+            "type": "string",
+            "example": "6d7c5b45f4ae4c01"
           }
         },
         "required": [
+          "code",
           "error",
-          "issues"
+          "issues",
+          "requestId"
         ]
       },
       "RegisterRequest": {

@@ -1,3 +1,5 @@
+const MAX_PBKDF2_ITERATIONS = 100_000;
+
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -18,11 +20,22 @@ async function sha256(input: string): Promise<string> {
   return bytesToHex(new Uint8Array(digest));
 }
 
+function ensureSupportedPbkdf2Iterations(iterations: number): number {
+  if (iterations > MAX_PBKDF2_ITERATIONS) {
+    throw new Error(
+      `PBKDF2 iteration count ${iterations} exceeds the Cloudflare Workers limit of ${MAX_PBKDF2_ITERATIONS}.`,
+    );
+  }
+
+  return iterations;
+}
+
 export async function hashPassword(
   password: string,
   pepper = "",
-  iterations = 210_000,
+  iterations = MAX_PBKDF2_ITERATIONS,
 ): Promise<string> {
+  const supportedIterations = ensureSupportedPbkdf2Iterations(iterations);
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -34,7 +47,7 @@ export async function hashPassword(
   const derivedBits = await crypto.subtle.deriveBits(
     {
       hash: "SHA-256",
-      iterations,
+      iterations: supportedIterations,
       name: "PBKDF2",
       salt,
     },
@@ -42,7 +55,7 @@ export async function hashPassword(
     256,
   );
 
-  return `pbkdf2_sha256$${iterations}$${bytesToHex(salt)}$${bytesToHex(
+  return `pbkdf2_sha256$${supportedIterations}$${bytesToHex(salt)}$${bytesToHex(
     new Uint8Array(derivedBits),
   )}`;
 }
@@ -66,6 +79,10 @@ export async function verifyPassword(
     return false;
   }
 
+  const supportedIterations = ensureSupportedPbkdf2Iterations(
+    Number(iterations),
+  );
+
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(`${password}${pepper}`),
@@ -76,7 +93,7 @@ export async function verifyPassword(
   const derivedBits = await crypto.subtle.deriveBits(
     {
       hash: "SHA-256",
-      iterations: Number(iterations),
+      iterations: supportedIterations,
       name: "PBKDF2",
       salt: hexToBytes(saltHex),
     },
