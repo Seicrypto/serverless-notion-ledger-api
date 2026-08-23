@@ -4,11 +4,18 @@ import { SESSION_TTL_SECONDS } from "./jwt";
 
 export const SESSION_COOKIE_NAME = "raidledger_session";
 
+function getSessionCookieSameSite(secure: boolean): "Lax" | "None" {
+  return secure ? "None" : "Lax";
+}
+
 export function clearSessionCookie(context: Context) {
+  const secure = context.env.APP_ENV === "production";
+
   deleteCookie(context, SESSION_COOKIE_NAME, {
     httpOnly: true,
     path: "/",
-    sameSite: "Lax",
+    sameSite: getSessionCookieSameSite(secure),
+    secure,
   });
 }
 
@@ -25,7 +32,7 @@ export function setSessionCookie(
     httpOnly: true,
     maxAge: SESSION_TTL_SECONDS,
     path: "/",
-    sameSite: "Lax",
+    sameSite: getSessionCookieSameSite(secure),
     secure,
   });
 }

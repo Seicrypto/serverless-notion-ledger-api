@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { swaggerUI } from "@hono/swagger-ui";
+import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { assertCoreBindings } from "./lib/env";
 import { authRouter } from "./modules/auth/route";
@@ -21,12 +22,41 @@ export const openApiDocumentConfig = {
   },
 } as const;
 
+const CORS_ALLOWED_ORIGINS = new Set([
+  "https://raid-ledger.pages.dev",
+]);
+
+const CORS_ALLOWED_METHODS = "GET, POST, PATCH, DELETE, OPTIONS";
+const CORS_ALLOWED_HEADERS = "Content-Type, Authorization";
+
+function applyCorsHeaders(context: Context, origin?: string | null) {
+  if (!origin || !CORS_ALLOWED_ORIGINS.has(origin)) {
+    return;
+  }
+
+  context.header("Access-Control-Allow-Origin", origin);
+  context.header("Access-Control-Allow-Methods", CORS_ALLOWED_METHODS);
+  context.header("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
+  context.header("Access-Control-Allow-Credentials", "true");
+  context.header("Vary", "Origin");
+}
+
 export function createApp() {
   const app = new OpenAPIHono<AppBindings>();
 
   app.use(async (c, next) => {
     assertCoreBindings(c.env);
+    const origin = c.req.header("Origin");
+
+    if (c.req.method === "OPTIONS") {
+      applyCorsHeaders(c, origin);
+      return new Response(null, {
+        status: 204,
+      });
+    }
+
     await next();
+    applyCorsHeaders(c, origin);
   });
 
   app.doc("/openapi.json", openApiDocumentConfig);
