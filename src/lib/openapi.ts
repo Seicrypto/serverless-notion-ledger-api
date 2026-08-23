@@ -24,19 +24,31 @@ export const healthSchema = z
 
 export const errorSchema = z
   .object({
+    code: z.string().openapi({
+      example: "INTERNAL_SERVER_ERROR",
+    }),
     error: z.string().openapi({
       example: "Internal Server Error",
+    }),
+    requestId: z.string().openapi({
+      example: "6d7c5b45f4ae4c01",
     }),
   })
   .openapi("ErrorResponse");
 
 export const validationErrorSchema = z
   .object({
+    code: z.string().openapi({
+      example: "VALIDATION_ERROR",
+    }),
     error: z.string().openapi({
       example: "Validation failed",
     }),
     issues: z.array(z.string()).openapi({
       example: ["email: Invalid email"],
+    }),
+    requestId: z.string().openapi({
+      example: "6d7c5b45f4ae4c01",
     }),
   })
   .openapi("ValidationErrorResponse");
