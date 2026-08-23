@@ -38,9 +38,14 @@ export class ConfigurationError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    options: {
+      code?: string;
+    } = {},
+  ) {
     super(message, 409, {
-      code: "CONFLICT",
+      code: options.code ?? "CONFLICT",
     });
     this.name = "ConflictError";
   }
@@ -56,9 +61,14 @@ export class UnauthorizedError extends AppError {
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    options: {
+      code?: string;
+    } = {},
+  ) {
     super(message, 403, {
-      code: "FORBIDDEN",
+      code: options.code ?? "FORBIDDEN",
     });
     this.name = "ForbiddenError";
   }

@@ -51,6 +51,18 @@ const forgotPasswordRequestSchema = z
   })
   .openapi("ForgotPasswordRequest");
 
+const resendVerificationEmailRequestSchema = z
+  .object({
+    email: z.string().trim().email(),
+  })
+  .openapi("ResendVerificationEmailRequest");
+
+const resendVerificationEmailResponseSchema = z
+  .object({
+    message: z.string(),
+  })
+  .openapi("ResendVerificationEmailResponse");
+
 const forgotPasswordResponseSchema = z
   .object({
     message: z.string(),
@@ -112,6 +124,23 @@ const authMeResponseSchema = z
     }),
   })
   .openapi("AuthMeResponse");
+
+const updateDisplayNameRequestSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(50),
+  })
+  .openapi("UpdateDisplayNameRequest");
+
+const updateDisplayNameResponseSchema = z
+  .object({
+    email: z.string().email(),
+    message: z.string(),
+    user: z.object({
+      displayName: z.string(),
+      id: z.number().int().positive(),
+    }),
+  })
+  .openapi("UpdateDisplayNameResponse");
 
 export const registerRoute = createRoute({
   method: "post",
@@ -261,6 +290,56 @@ export const authMeRoute = createRoute({
   },
 });
 
+export const updateDisplayNameRoute = createRoute({
+  method: "patch",
+  path: "/me",
+  tags: ["Auth"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: updateDisplayNameRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: updateDisplayNameResponseSchema,
+        },
+      },
+      description: "Display name updated successfully.",
+    },
+    401: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Authentication required.",
+    },
+    403: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Authenticated account is not active.",
+    },
+    422: {
+      content: {
+        "application/json": {
+          schema: validationErrorSchema,
+        },
+      },
+      description: "Validation failed.",
+    },
+  },
+});
+
 export const verifyEmailRoute = createRoute({
   method: "get",
   path: "/verify-email",
@@ -308,6 +387,48 @@ export const verifyEmailRoute = createRoute({
         },
       },
       description: "Validation failed.",
+    },
+  },
+});
+
+export const resendVerificationEmailRoute = createRoute({
+  method: "post",
+  path: "/resend-verification-email",
+  tags: ["Auth"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: resendVerificationEmailRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: resendVerificationEmailResponseSchema,
+        },
+      },
+      description: "Verification email resend flow accepted.",
+    },
+    422: {
+      content: {
+        "application/json": {
+          schema: validationErrorSchema,
+        },
+      },
+      description: "Validation failed.",
+    },
+    500: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Resend verification email failed.",
     },
   },
 });
