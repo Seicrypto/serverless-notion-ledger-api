@@ -29,16 +29,29 @@ const CORS_ALLOWED_ORIGINS = new Set([
 const CORS_ALLOWED_METHODS = "GET, POST, PATCH, DELETE, OPTIONS";
 const CORS_ALLOWED_HEADERS = "Content-Type, Authorization";
 
-function applyCorsHeaders(context: Context, origin?: string | null) {
+function getCorsHeaders(origin?: string | null): Headers | null {
   if (!origin || !CORS_ALLOWED_ORIGINS.has(origin)) {
+    return null;
+  }
+
+  return new Headers({
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": CORS_ALLOWED_METHODS,
+    "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS,
+    "Access-Control-Allow-Credentials": "true",
+    Vary: "Origin",
+  });
+}
+
+function applyCorsHeaders(context: Context, origin?: string | null) {
+  const headers = getCorsHeaders(origin);
+  if (!headers) {
     return;
   }
 
-  context.header("Access-Control-Allow-Origin", origin);
-  context.header("Access-Control-Allow-Methods", CORS_ALLOWED_METHODS);
-  context.header("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
-  context.header("Access-Control-Allow-Credentials", "true");
-  context.header("Vary", "Origin");
+  for (const [key, value] of headers.entries()) {
+    context.header(key, value);
+  }
 }
 
 export function createApp() {
@@ -49,8 +62,9 @@ export function createApp() {
     const origin = c.req.header("Origin");
 
     if (c.req.method === "OPTIONS") {
-      applyCorsHeaders(c, origin);
+      const headers = getCorsHeaders(origin) ?? new Headers();
       return new Response(null, {
+        headers,
         status: 204,
       });
     }
