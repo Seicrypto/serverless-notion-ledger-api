@@ -116,10 +116,13 @@ test("organization members repository supports CRUD over migrated schema", async
     const created = await members.create({
       organizationId: organization.id,
       role: "owner",
+      status: "active",
       userId: owner.id,
     });
 
     assert.equal(created.role, "owner");
+    assert.equal(created.status, "active");
+    assert.ok(created.approved_at);
 
     const byComposite = await members.findByOrganizationAndUser(
       organization.id,
@@ -131,12 +134,55 @@ test("organization members repository supports CRUD over migrated schema", async
     const updated = await members.updateRole(created.id, "admin");
     assert.equal(updated.role, "admin");
 
-    const listed = await members.listByOrganization(organization.id);
+    const listed = await members.listByOrganization(organization.id, "active");
     assert.equal(listed.length, 1);
 
     await members.delete(created.id);
     const deleted = await members.findById(created.id);
-    assert.equal(deleted, null);
+    assert.ok(deleted);
+    assert.equal(deleted.status, "removed");
+    assert.ok(deleted.removed_at);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("organization members repository supports pending approval workflow", async () => {
+  const { cleanup, db } = await createTestDatabase();
+  try {
+    const users = new UsersRepository(db);
+    const organizations = new OrganizationsRepository(db);
+    const members = new OrganizationMembersRepository(db);
+    const owner = await users.create({
+      email: "pending-owner@example.com",
+      passwordHash: "hash-pending-owner",
+      vanity: "u-pending-owner",
+    });
+    const applicant = await users.create({
+      email: "pending-applicant@example.com",
+      passwordHash: "hash-pending-applicant",
+      vanity: "u-pending-applicant",
+    });
+
+    const organization = await organizations.create({
+      createdByUserId: owner.id,
+      name: "Pending Guild",
+      slug: "pending-guild",
+    });
+
+    const created = await members.create({
+      organizationId: organization.id,
+      role: "member",
+      status: "pending",
+      userId: applicant.id,
+    });
+
+    assert.equal(created.status, "pending");
+    assert.equal(created.approved_at, null);
+
+    const activated = await members.updateStatus(created.id, "active");
+    assert.equal(activated.status, "active");
+    assert.ok(activated.approved_at);
   } finally {
     await cleanup();
   }
@@ -212,11 +258,15 @@ test("games repository supports CRUD over migrated schema", async () => {
       description: "Massively multiplayer online role-playing game",
       name: "World of Warcraft",
       slug: "wow",
+      source: "steam",
+      sourceId: "12345",
       type: "game",
     });
 
     assert.equal(created.slug, "wow");
     assert.equal(created.type, "game");
+    assert.equal(created.source, "steam");
+    assert.equal(created.source_id, "12345");
 
     const found = await games.findBySlug("wow");
     assert.ok(found);
@@ -227,11 +277,13 @@ test("games repository supports CRUD over migrated schema", async () => {
       isActive: false,
       name: "World of Warcraft Retail",
       slug: "wow-retail",
+      sourceId: "54321",
     });
 
     assert.equal(updated.name, "World of Warcraft Retail");
     assert.equal(updated.icon_url, "https://example.com/wow.png");
     assert.equal(updated.is_active, 0);
+    assert.equal(updated.source_id, "54321");
 
     await games.delete(created.id);
     const deleted = await games.findById(created.id);

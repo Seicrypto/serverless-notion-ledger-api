@@ -1,11 +1,24 @@
+import type { LocaleCode } from "../types/locale";
+
 export type UserStatus =
   | "pending_verification"
   | "pending_approval"
   | "active"
   | "disabled";
 export type OrganizationMemberRole = "owner" | "admin" | "member";
+export type OrganizationMemberStatus =
+  | "pending"
+  | "active"
+  | "left"
+  | "removed";
 export type OfficialStaffRole = "admin" | "staff";
 export type GameType = "game" | "activity";
+export type GameSource = "internal" | "steam";
+export type GameAliasType =
+  | "official"
+  | "localized"
+  | "community"
+  | "nickname";
 
 export interface UserRecord {
   created_at: string;
@@ -64,24 +77,32 @@ export interface UpdateOrganizationInput {
 }
 
 export interface OrganizationMemberRecord {
+  approved_at: string | null;
   created_at: string;
   id: number;
   joined_at: string;
+  left_at: string | null;
   organization_id: number;
+  removed_at: string | null;
   role: OrganizationMemberRole;
+  status: OrganizationMemberStatus;
   user_id: number;
 }
 
 export interface CreateOrganizationMemberInput {
+  approvedAt?: string | null;
   joinedAt?: string;
   organizationId: number;
   role?: OrganizationMemberRole;
+  status?: OrganizationMemberStatus;
   userId: number;
 }
 
 export interface CharacterRecord {
   claimed_by_user_id: number | null;
   created_at: string;
+  deleted_at: string | null;
+  deleted_by_user_id: number | null;
   game_id: number | null;
   id: number;
   is_active: number;
@@ -119,6 +140,8 @@ export interface GameRecord {
   is_active: number;
   name: string;
   slug: string;
+  source: GameSource;
+  source_id: string | null;
   type: GameType;
   updated_at: string;
 }
@@ -129,6 +152,8 @@ export interface CreateGameInput {
   isActive?: boolean;
   name: string;
   slug: string;
+  source?: GameSource;
+  sourceId?: string | null;
   type?: GameType;
 }
 
@@ -138,7 +163,28 @@ export interface UpdateGameInput {
   isActive?: boolean;
   name?: string;
   slug?: string;
+  source?: GameSource;
+  sourceId?: string | null;
   type?: GameType;
+}
+
+export interface GameAliasRecord {
+  alias: string;
+  alias_type: GameAliasType;
+  created_at: string;
+  game_id: number;
+  id: number;
+  locale: LocaleCode | null;
+  sort_order: number;
+  updated_at: string;
+}
+
+export interface CreateGameAliasInput {
+  alias: string;
+  aliasType?: GameAliasType;
+  gameId: number;
+  locale?: LocaleCode | null;
+  sortOrder?: number;
 }
 
 export interface OrganizationGameRecord {
