@@ -143,6 +143,7 @@ authRouter.openapi(authMeRoute, async (c) => {
           isStaff: session.staff !== null,
           staffRole: session.staff?.role ?? null,
           status: session.user.status,
+          vanity: session.user.vanity,
         },
       },
       200,

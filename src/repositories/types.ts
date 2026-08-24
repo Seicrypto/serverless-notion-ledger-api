@@ -16,6 +16,7 @@ export interface UserRecord {
   password_hash: string;
   status: UserStatus;
   updated_at: string;
+  vanity: string | null;
 }
 
 export interface CreateUserInput {
@@ -24,6 +25,7 @@ export interface CreateUserInput {
   emailVerifiedAt?: string | null;
   passwordHash: string;
   status?: UserStatus;
+  vanity?: string | null;
 }
 
 export interface UpdateUserInput {

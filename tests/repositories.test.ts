@@ -15,14 +15,20 @@ test("users repository supports CRUD over migrated schema", async () => {
     const created = await repository.create({
       email: "owner@example.com",
       passwordHash: "hash-1",
+      vanity: "u-owner-home",
     });
 
     assert.equal(created.email, "owner@example.com");
     assert.equal(created.status, "pending_verification");
+    assert.equal(created.vanity, "u-owner-home");
 
     const found = await repository.findByEmail("owner@example.com");
     assert.ok(found);
     assert.equal(found.id, created.id);
+
+    const vanityFound = await repository.findByVanity("u-owner-home");
+    assert.ok(vanityFound);
+    assert.equal(vanityFound.id, created.id);
 
     const updated = await repository.update(created.id, {
       displayName: "Owner",

@@ -121,6 +121,7 @@ const authMeResponseSchema = z
         "active",
         "disabled",
       ]),
+      vanity: z.string().nullable(),
     }),
   })
   .openapi("AuthMeResponse");

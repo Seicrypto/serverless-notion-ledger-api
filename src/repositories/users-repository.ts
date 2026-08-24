@@ -17,15 +17,17 @@ export class UsersRepository {
         password_hash,
         display_name,
         email_verified_at,
+        vanity,
         status,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *`,
       input.email,
       input.passwordHash,
       input.displayName ?? null,
       input.emailVerifiedAt ?? null,
+      input.vanity ?? null,
       input.status ?? "pending_verification",
       timestamp,
       timestamp,
@@ -44,6 +46,13 @@ export class UsersRepository {
 
   async findByEmail(email: string): Promise<UserRecord | null> {
     return this.db.first<UserRecord>(`SELECT * FROM users WHERE email = ?`, email);
+  }
+
+  async findByVanity(vanity: string): Promise<UserRecord | null> {
+    return this.db.first<UserRecord>(
+      `SELECT * FROM users WHERE vanity = ?`,
+      vanity,
+    );
   }
 
   async findById(id: number): Promise<UserRecord | null> {
