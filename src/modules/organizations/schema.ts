@@ -19,6 +19,19 @@ const organizationSchema = z
   })
   .openapi("Organization");
 
+const organizationGameSchema = z
+  .object({
+    displayName: z.string().nullable(),
+    gameId: z.number().int().positive(),
+    gameName: z.string(),
+    gameSlug: z.string(),
+    isPrimary: z.boolean(),
+    source: z.enum(["internal", "steam"]),
+    sourceId: z.string().nullable(),
+    type: z.enum(["game", "activity"]),
+  })
+  .openapi("OrganizationGameSummary");
+
 const characterSchema = z
   .object({
     claimedByUserId: z.number().int().positive().nullable(),
@@ -46,6 +59,93 @@ const organizationMemberSchema = z
     userId: z.number().int().positive(),
   })
   .openapi("OrganizationMember");
+
+const organizationSearchItemSchema = organizationSchema
+  .extend({
+    activeCharacterCount: z.number().int().nonnegative(),
+    activeMemberCount: z.number().int().nonnegative(),
+    games: z.array(organizationGameSchema),
+  })
+  .openapi("OrganizationSearchItem");
+
+const gameSchema = z
+  .object({
+    description: z.string().nullable(),
+    iconUrl: z.string().nullable(),
+    id: z.number().int().positive(),
+    isActive: z.boolean(),
+    name: z.string(),
+    slug: z.string(),
+    source: z.enum(["internal", "steam"]),
+    sourceId: z.string().nullable(),
+    type: z.enum(["game", "activity"]),
+  })
+  .openapi("Game");
+
+const gameListResponseSchema = z
+  .object({
+    games: z.array(gameSchema),
+  })
+  .openapi("GameListResponse");
+
+const organizationListResponseSchema = z
+  .object({
+    organizations: z.array(organizationSearchItemSchema),
+  })
+  .openapi("OrganizationListResponse");
+
+const organizationDetailResponseSchema = z
+  .object({
+    organization: organizationSearchItemSchema,
+  })
+  .openapi("OrganizationDetailResponse");
+
+const organizationCharactersResponseSchema = z
+  .object({
+    characters: z.array(characterSchema),
+  })
+  .openapi("OrganizationCharactersResponse");
+
+const organizationMembersResponseSchema = z
+  .object({
+    members: z.array(organizationMemberSchema),
+  })
+  .openapi("OrganizationMembersResponse");
+
+const myOrganizationSchema = organizationSearchItemSchema
+  .extend({
+    membership: z.object({
+      approvedAt: z.string().nullable(),
+      joinedAt: z.string(),
+      role: z.enum(["owner", "admin", "member"]),
+      status: z.enum(["pending", "active"]),
+    }),
+  })
+  .openapi("MyOrganization");
+
+const myOrganizationsResponseSchema = z
+  .object({
+    organizations: z.array(myOrganizationSchema),
+  })
+  .openapi("MyOrganizationsResponse");
+
+const organizationSearchQuerySchema = z
+  .object({
+    gameId: z.coerce.number().int().positive().optional(),
+    gameSlug: z.string().trim().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(50).optional(),
+    q: z.string().trim().min(1).max(100).optional(),
+  })
+  .openapi("OrganizationSearchQuery");
+
+const gameListQuerySchema = z
+  .object({
+    includeInactive: z
+      .enum(["true", "false"])
+      .optional()
+      .transform((value) => value === "true"),
+  })
+  .openapi("GameListQuery");
 
 const initialCharacterSchema = z
   .object({
@@ -217,6 +317,157 @@ export const createOrganizationRoute = createRoute({
     409: {
       content: { "application/json": { schema: errorSchema } },
       description: "Organization name or slug already exists.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const listGamesRoute = createRoute({
+  method: "get",
+  path: "/games",
+  tags: ["Organizations"],
+  request: {
+    query: gameListQuerySchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: gameListResponseSchema,
+        },
+      },
+      description: "List available games.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const listOrganizationsRoute = createRoute({
+  method: "get",
+  path: "/",
+  tags: ["Organizations"],
+  request: {
+    query: organizationSearchQuerySchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationListResponseSchema,
+        },
+      },
+      description: "Search organizations.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const myOrganizationsRoute = createRoute({
+  method: "get",
+  path: "/me",
+  tags: ["Organizations"],
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: myOrganizationsResponseSchema,
+        },
+      },
+      description: "List organizations for the authenticated user.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User is not allowed to access organizations.",
+    },
+  },
+});
+
+export const organizationDetailRoute = createRoute({
+  method: "get",
+  path: "/{id}",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationDetailResponseSchema,
+        },
+      },
+      description: "Organization detail.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization not found.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const organizationCharactersRoute = createRoute({
+  method: "get",
+  path: "/{id}/characters",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationCharactersResponseSchema,
+        },
+      },
+      description: "List organization characters.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization not found.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const organizationMembersRoute = createRoute({
+  method: "get",
+  path: "/{id}/members",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationMembersResponseSchema,
+        },
+      },
+      description: "List active organization members.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization not found.",
     },
     422: {
       content: { "application/json": { schema: validationErrorSchema } },

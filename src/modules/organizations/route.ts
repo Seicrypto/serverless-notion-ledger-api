@@ -11,6 +11,7 @@ import {
 import { getSessionCookie } from "../../lib/session-cookie";
 import { generateInitialOrganizationVanity } from "../../lib/vanity";
 import { CharactersRepository } from "../../repositories/characters-repository";
+import { GamesRepository } from "../../repositories/games-repository";
 import { SessionAuthService } from "../../services/auth/session-auth-service";
 import { OrganizationMembersRepository } from "../../repositories/organization-members-repository";
 import { OrganizationsRepository } from "../../repositories/organizations-repository";
@@ -25,6 +26,12 @@ import {
   currentOrganizationMembersRoute,
   currentOrganizationRoute,
   deleteOrganizationRoute,
+  listGamesRoute,
+  listOrganizationsRoute,
+  myOrganizationsRoute,
+  organizationCharactersRoute,
+  organizationDetailRoute,
+  organizationMembersRoute,
   updateOrganizationRoute,
 } from "./schema";
 
@@ -115,6 +122,20 @@ function toOrganizationResponse(
     slug: organization.slug,
     updatedAt: organization.updated_at,
     vanity: organization.vanity,
+  };
+}
+
+function toGameResponse(game: Awaited<ReturnType<GamesRepository["create"]>>) {
+  return {
+    description: game.description,
+    iconUrl: game.icon_url,
+    id: game.id,
+    isActive: game.is_active === 1,
+    name: game.name,
+    slug: game.slug,
+    source: game.source,
+    sourceId: game.source_id,
+    type: game.type,
   };
 }
 
@@ -263,6 +284,354 @@ async function requireAvailableCharacter(
 
   return character;
 }
+
+async function buildOrganizationSearchItems(
+  db: D1Client,
+  organizations: Array<Awaited<ReturnType<OrganizationsRepository["create"]>>>,
+) {
+  if (organizations.length === 0) {
+    return [];
+  }
+
+  const organizationIds = organizations.map((organization) => organization.id);
+  const placeholders = organizationIds.map(() => "?").join(", ");
+
+  const games = await db.all<{
+    display_name: string | null;
+    game_id: number;
+    game_name: string;
+    game_slug: string;
+    is_primary: number;
+    organization_id: number;
+    source: "internal" | "steam";
+    source_id: string | null;
+    type: "game" | "activity";
+  }>(
+    `SELECT
+       og.organization_id,
+       og.game_id,
+       og.display_name,
+       og.is_primary,
+       g.name AS game_name,
+       g.slug AS game_slug,
+       g.source,
+       g.source_id,
+       g.type
+     FROM organization_games og
+     INNER JOIN games g ON g.id = og.game_id
+     WHERE og.organization_id IN (${placeholders})
+     ORDER BY og.sort_order ASC, og.id ASC`,
+    ...organizationIds,
+  );
+
+  const memberCounts = await db.all<{
+    active_member_count: number;
+    organization_id: number;
+  }>(
+    `SELECT organization_id, COUNT(*) AS active_member_count
+     FROM organization_members
+     WHERE organization_id IN (${placeholders}) AND status = 'active'
+     GROUP BY organization_id`,
+    ...organizationIds,
+  );
+
+  const characterCounts = await db.all<{
+    active_character_count: number;
+    organization_id: number;
+  }>(
+    `SELECT organization_id, COUNT(*) AS active_character_count
+     FROM characters
+     WHERE organization_id IN (${placeholders})
+       AND deleted_at IS NULL
+       AND is_active = 1
+     GROUP BY organization_id`,
+    ...organizationIds,
+  );
+
+  const gamesByOrganization = new Map<number, typeof games>();
+  for (const game of games) {
+    const existing = gamesByOrganization.get(game.organization_id) ?? [];
+    existing.push(game);
+    gamesByOrganization.set(game.organization_id, existing);
+  }
+
+  const memberCountByOrganization = new Map(
+    memberCounts.map((row) => [row.organization_id, row.active_member_count]),
+  );
+  const characterCountByOrganization = new Map(
+    characterCounts.map((row) => [row.organization_id, row.active_character_count]),
+  );
+
+  return organizations.map((organization) => ({
+    ...toOrganizationResponse(organization),
+    activeCharacterCount: characterCountByOrganization.get(organization.id) ?? 0,
+    activeMemberCount: memberCountByOrganization.get(organization.id) ?? 0,
+    games: (gamesByOrganization.get(organization.id) ?? []).map((game) => ({
+      displayName: game.display_name,
+      gameId: game.game_id,
+      gameName: game.game_name,
+      gameSlug: game.game_slug,
+      isPrimary: game.is_primary === 1,
+      source: game.source,
+      sourceId: game.source_id,
+      type: game.type,
+    })),
+  }));
+}
+
+organizationsRouter.openapi(listGamesRoute, async (c) => {
+  const parsed = listGamesRoute.request.query.safeParse(c.req.query());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "query", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  const db = new D1Client(c.env.APP_DB);
+  const games = new GamesRepository(db);
+  const records = await games.list();
+
+  return c.json(
+    {
+      games: records
+        .filter((record) => parsed.data.includeInactive || record.is_active === 1)
+        .map(toGameResponse),
+    },
+    200,
+  );
+});
+
+organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
+  const parsed = listOrganizationsRoute.request.query.safeParse(c.req.query());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "query", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  const db = new D1Client(c.env.APP_DB);
+  const bindings: unknown[] = [];
+  const whereClauses: string[] = [];
+
+  if (parsed.data.q) {
+    whereClauses.push(
+      `(o.name LIKE ? OR o.slug LIKE ? OR o.vanity LIKE ? OR g.name LIKE ? OR g.slug LIKE ?)`,
+    );
+    const pattern = `%${parsed.data.q}%`;
+    bindings.push(pattern, pattern, pattern, pattern, pattern);
+  }
+
+  if (parsed.data.gameId) {
+    whereClauses.push(`og.game_id = ?`);
+    bindings.push(parsed.data.gameId);
+  }
+
+  if (parsed.data.gameSlug) {
+    whereClauses.push(`g.slug = ?`);
+    bindings.push(parsed.data.gameSlug);
+  }
+
+  const limit = parsed.data.limit ?? 20;
+  bindings.push(limit);
+
+  const rows = await db.all<{
+    created_at: string;
+    created_by_user_id: number;
+    description: string | null;
+    icon_url: string | null;
+    id: number;
+    name: string;
+    slug: string;
+    updated_at: string;
+    vanity: string | null;
+  }>(
+    `SELECT DISTINCT
+       o.*
+     FROM organizations o
+     LEFT JOIN organization_games og ON og.organization_id = o.id
+     LEFT JOIN games g ON g.id = og.game_id
+     ${whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : ""}
+     ORDER BY o.id ASC
+     LIMIT ?`,
+    ...bindings,
+  );
+
+  const organizations = await buildOrganizationSearchItems(db, rows);
+
+  return c.json({ organizations }, 200);
+});
+
+organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
+    const db = new D1Client(c.env.APP_DB);
+
+    const rows = await db.all<{
+      approved_at: string | null;
+      created_at: string;
+      created_by_user_id: number;
+      description: string | null;
+      icon_url: string | null;
+      id: number;
+      joined_at: string;
+      membership_role: "owner" | "admin" | "member";
+      membership_status: "pending" | "active";
+      name: string;
+      slug: string;
+      updated_at: string;
+      vanity: string | null;
+    }>(
+      `SELECT
+         o.*,
+         m.role AS membership_role,
+         m.status AS membership_status,
+         m.joined_at,
+         m.approved_at
+       FROM organization_members m
+       INNER JOIN organizations o ON o.id = m.organization_id
+       WHERE m.user_id = ?
+         AND m.status IN ('pending', 'active')
+       ORDER BY o.id ASC`,
+      session.user.id,
+    );
+
+    const organizations = await buildOrganizationSearchItems(
+      db,
+      rows.map((row) => ({
+        created_at: row.created_at,
+        created_by_user_id: row.created_by_user_id,
+        description: row.description,
+        icon_url: row.icon_url,
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        updated_at: row.updated_at,
+        vanity: row.vanity,
+      })),
+    );
+
+    const membershipById = new Map(
+      rows.map((row) => [
+        row.id,
+        {
+          approvedAt: row.approved_at,
+          joinedAt: row.joined_at,
+          role: row.membership_role,
+          status: row.membership_status,
+        },
+      ]),
+    );
+
+    return c.json(
+      {
+        organizations: organizations.map((organization) => ({
+          ...organization,
+          membership: membershipById.get(organization.id)!,
+        })),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403);
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(organizationDetailRoute, async (c) => {
+  const parsed = organizationDetailRoute.request.params.safeParse(c.req.param());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const organization = await requireOrganizationById(organizations, parsed.data.id);
+    const [detail] = await buildOrganizationSearchItems(db, [organization]);
+
+    return c.json({ organization: detail }, 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 404);
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
+  const parsed = organizationCharactersRoute.request.params.safeParse(c.req.param());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const characters = new CharactersRepository(db);
+    await requireOrganizationById(organizations, parsed.data.id);
+
+    return c.json(
+      {
+        characters: (await characters.listByOrganization(parsed.data.id)).map(
+          toCharacterResponse,
+        ),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 404);
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(organizationMembersRoute, async (c) => {
+  const parsed = organizationMembersRoute.request.params.safeParse(c.req.param());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const members = new OrganizationMembersRepository(db);
+    await requireOrganizationById(organizations, parsed.data.id);
+
+    return c.json(
+      {
+        members: (await members.listByOrganization(parsed.data.id, "active")).map(
+          toOrganizationWorkflowMemberResponse,
+        ),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 404);
+    }
+    throw error;
+  }
+});
 
 organizationsRouter.openapi(createOrganizationRoute, async (c) => {
   const schema =
