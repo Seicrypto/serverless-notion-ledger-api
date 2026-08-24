@@ -14,6 +14,8 @@
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
     "openapi:export": "node scripts/run-ts-entry.mjs scripts/export-openapi.ts",
+    "test:d1:local": "node scripts/run-ts-entry.mjs scripts/test-d1-local-integration.ts",
+    "test:migrations:smoke": "node scripts/run-ts-entry.mjs scripts/test-migrations-smoke.ts",
     "test:repositories": "node scripts/run-ts-tests.mjs tests/repositories.test.ts tests/repositories-official-staffs.test.ts"
   },
   "devDependencies": {

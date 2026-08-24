@@ -8,6 +8,11 @@ jobs:
   ci-unittest:
     uses: ./.github/workflows/ci-unittest.yml
 
+  ci-d1-integration:
+    uses: ./.github/workflows/ci-d1-integration.yml
+
   upload-openapi-artifact:
-    needs: ci-unittest
+    needs:
+      - ci-unittest
+      - ci-d1-integration
     uses: ./.github/workflows/upload-openapi-artifact.yml

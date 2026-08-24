@@ -32,11 +32,6 @@ jobs:
         continue-on-error: true
         run: npm run test:repositories
 
-      - name: Validate local D1 migrations
-        id: migrate_local
-        continue-on-error: true
-        run: npm run db:migrate:local
-
       - name: Summarize CI results
         if: always()
         run: |
@@ -57,13 +52,6 @@ jobs:
             failures=1
           else
             echo "- \`npm run test:repositories\` passed" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          if [ "${{ steps.migrate_local.outcome }}" != "success" ]; then
-            echo "- \`npm run db:migrate:local\` failed" >> "$GITHUB_STEP_SUMMARY"
-            failures=1
-          else
-            echo "- \`npm run db:migrate:local\` passed" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           if [ "$failures" -ne 0 ]; then
