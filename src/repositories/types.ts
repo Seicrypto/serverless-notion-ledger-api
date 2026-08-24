@@ -5,6 +5,7 @@ export type UserStatus =
   | "disabled";
 export type OrganizationMemberRole = "owner" | "admin" | "member";
 export type OfficialStaffRole = "admin" | "staff";
+export type GameType = "game" | "activity";
 
 export interface UserRecord {
   created_at: string;
@@ -40,6 +41,7 @@ export interface OrganizationRecord {
   name: string;
   slug: string;
   updated_at: string;
+  vanity: string | null;
 }
 
 export interface CreateOrganizationInput {
@@ -48,6 +50,7 @@ export interface CreateOrganizationInput {
   iconUrl?: string | null;
   name: string;
   slug: string;
+  vanity?: string | null;
 }
 
 export interface UpdateOrganizationInput {
@@ -55,6 +58,7 @@ export interface UpdateOrganizationInput {
   iconUrl?: string | null;
   name?: string;
   slug?: string;
+  vanity?: string | null;
 }
 
 export interface OrganizationMemberRecord {
@@ -76,6 +80,7 @@ export interface CreateOrganizationMemberInput {
 export interface CharacterRecord {
   claimed_by_user_id: number | null;
   created_at: string;
+  game_id: number | null;
   id: number;
   is_active: number;
   name: string;
@@ -87,6 +92,7 @@ export interface CharacterRecord {
 
 export interface CreateCharacterInput {
   claimedByUserId?: number | null;
+  gameId?: number | null;
   isActive?: boolean;
   name: string;
   notes?: string | null;
@@ -96,10 +102,66 @@ export interface CreateCharacterInput {
 
 export interface UpdateCharacterInput {
   claimedByUserId?: number | null;
+  gameId?: number | null;
   isActive?: boolean;
   name?: string;
   notes?: string | null;
   slug?: string | null;
+}
+
+export interface GameRecord {
+  created_at: string;
+  description: string | null;
+  icon_url: string | null;
+  id: number;
+  is_active: number;
+  name: string;
+  slug: string;
+  type: GameType;
+  updated_at: string;
+}
+
+export interface CreateGameInput {
+  description?: string | null;
+  iconUrl?: string | null;
+  isActive?: boolean;
+  name: string;
+  slug: string;
+  type?: GameType;
+}
+
+export interface UpdateGameInput {
+  description?: string | null;
+  iconUrl?: string | null;
+  isActive?: boolean;
+  name?: string;
+  slug?: string;
+  type?: GameType;
+}
+
+export interface OrganizationGameRecord {
+  created_at: string;
+  display_name: string | null;
+  game_id: number;
+  id: number;
+  is_primary: number;
+  organization_id: number;
+  sort_order: number;
+  updated_at: string;
+}
+
+export interface CreateOrganizationGameInput {
+  displayName?: string | null;
+  gameId: number;
+  isPrimary?: boolean;
+  organizationId: number;
+  sortOrder?: number;
+}
+
+export interface UpdateOrganizationGameInput {
+  displayName?: string | null;
+  isPrimary?: boolean;
+  sortOrder?: number;
 }
 
 export interface OfficialStaffRecord {

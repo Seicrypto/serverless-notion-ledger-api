@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -15,8 +15,14 @@ export interface TestDatabaseContext {
 export async function createTestDatabase(): Promise<TestDatabaseContext> {
   const root = await mkdtemp(join(tmpdir(), "raidledger-test-"));
   const dbPath = join(root, "test.sqlite");
-  const migrationSql = await readFile("migrations/0001_initial_schema.sql", "utf8");
   const migrationPath = join(root, "migration.sql");
+  const migrationFiles = (await readdir("migrations"))
+    .filter((entry) => entry.endsWith(".sql"))
+    .sort((left, right) => left.localeCompare(right));
+  const migrationSqlParts = await Promise.all(
+    migrationFiles.map((file) => readFile(join("migrations", file), "utf8")),
+  );
+  const migrationSql = migrationSqlParts.join("\n\n");
 
   await writeFile(migrationPath, migrationSql, "utf8");
   await execFileAsync("sqlite3", [dbPath, `.read ${migrationPath}`]);

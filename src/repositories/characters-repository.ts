@@ -14,6 +14,7 @@ export class CharactersRepository {
     const created = await this.db.first<CharacterRecord>(
       `INSERT INTO characters (
         organization_id,
+        game_id,
         name,
         slug,
         claimed_by_user_id,
@@ -21,9 +22,10 @@ export class CharactersRepository {
         notes,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *`,
       input.organizationId,
+      input.gameId ?? null,
       input.name,
       input.slug ?? null,
       input.claimedByUserId ?? null,
@@ -60,14 +62,24 @@ export class CharactersRepository {
     );
   }
 
+  async listByGame(gameId: number): Promise<CharacterRecord[]> {
+    return this.db.all<CharacterRecord>(
+      `SELECT * FROM characters
+       WHERE game_id = ?
+       ORDER BY id ASC`,
+      gameId,
+    );
+  }
+
   async update(id: number, input: UpdateCharacterInput): Promise<CharacterRecord> {
     const existing = await this.findByIdOrThrow(id);
 
     const updated = await this.db.first<CharacterRecord>(
       `UPDATE characters
-       SET name = ?, slug = ?, claimed_by_user_id = ?, is_active = ?, notes = ?, updated_at = ?
+       SET game_id = ?, name = ?, slug = ?, claimed_by_user_id = ?, is_active = ?, notes = ?, updated_at = ?
        WHERE id = ?
        RETURNING *`,
+      input.gameId === undefined ? existing.game_id : input.gameId,
       input.name ?? existing.name,
       input.slug === undefined ? existing.slug : input.slug,
       input.claimedByUserId === undefined
