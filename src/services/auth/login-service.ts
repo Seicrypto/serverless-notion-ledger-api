@@ -40,15 +40,21 @@ export class LoginService {
     }
 
     if (user.status === "pending_verification") {
-      throw new ForbiddenError("Please verify your email before logging in");
+      throw new ForbiddenError("Please verify your email before logging in", {
+        code: "EMAIL_VERIFICATION_REQUIRED",
+      });
     }
 
     if (user.status === "pending_approval") {
-      throw new ForbiddenError("Your account is pending approval");
+      throw new ForbiddenError("Your account is pending approval", {
+        code: "ACCOUNT_PENDING_APPROVAL",
+      });
     }
 
     if (user.status === "disabled") {
-      throw new ForbiddenError("Your account has been disabled");
+      throw new ForbiddenError("Your account has been disabled", {
+        code: "ACCOUNT_DISABLED",
+      });
     }
 
     const token = await signSessionJwt({

@@ -8,8 +8,10 @@ import {
 import { ForgotPasswordService } from "../../services/auth/forgot-password-service";
 import { LoginService } from "../../services/auth/login-service";
 import { RegisterService } from "../../services/auth/register-service";
+import { ResendEmailVerificationService } from "../../services/auth/resend-email-verification-service";
 import { ResetPasswordService } from "../../services/auth/reset-password-service";
 import { SessionAuthService } from "../../services/auth/session-auth-service";
+import { UpdateDisplayNameService } from "../../services/auth/update-display-name-service";
 import { VerifyEmailService } from "../../services/auth/verify-email-service";
 import {
   clearSessionCookie,
@@ -22,7 +24,9 @@ import {
   loginRoute,
   logoutRoute,
   registerRoute,
+  resendVerificationEmailRoute,
   resetPasswordRoute,
+  updateDisplayNameRoute,
   verifyEmailRoute,
 } from "./schema";
 
@@ -139,6 +143,48 @@ authRouter.openapi(authMeRoute, async (c) => {
           isStaff: session.staff !== null,
           staffRole: session.staff?.role ?? null,
           status: session.user.status,
+          vanity: session.user.vanity,
+        },
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403);
+    }
+
+    throw error;
+  }
+});
+
+authRouter.openapi(updateDisplayNameRoute, async (c) => {
+  const schema = updateDisplayNameRoute.request.body.content["application/json"].schema;
+  const payload = await c.req.json();
+  const parsed = schema.safeParse(payload);
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "body", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
+    const service = new UpdateDisplayNameService(c.env);
+    const result = await service.execute({
+      displayName: parsed.data.displayName,
+      userId: session.user.id,
+    });
+
+    return c.json(
+      {
+        email: result.email,
+        message: "Display name updated successfully.",
+        user: {
+          displayName: result.displayName,
+          id: result.userId,
         },
       },
       200,
@@ -182,6 +228,39 @@ authRouter.openapi(verifyEmailRoute, async (c) => {
         buildErrorResponseBody(c, error),
         error.status as 400 | 403 | 404,
       );
+    }
+
+    throw error;
+  }
+});
+
+authRouter.openapi(resendVerificationEmailRoute, async (c) => {
+  const schema =
+    resendVerificationEmailRoute.request.body.content["application/json"].schema;
+  const payload = await c.req.json();
+  const parsed = schema.safeParse(payload);
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "body", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const service = new ResendEmailVerificationService(c.env);
+    await service.execute(parsed.data);
+
+    return c.json(
+      {
+        message:
+          "If the email belongs to a pending verification account, a new verification email has been sent.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 500);
     }
 
     throw error;

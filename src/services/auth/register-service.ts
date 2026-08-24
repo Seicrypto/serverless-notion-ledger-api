@@ -2,6 +2,7 @@ import { D1Client } from "../../infrastructure/d1/d1-client";
 import { ResendClient } from "../../infrastructure/resend/resend-client";
 import { ConflictError } from "../../lib/errors";
 import { hashPassword } from "../../lib/crypto";
+import { generateInitialUserVanity } from "../../lib/vanity";
 import { OfficialStaffsRepository } from "../../repositories/official-staffs-repository";
 import { UsersRepository } from "../../repositories/users-repository";
 import type { UserStatus } from "../../repositories/types";
@@ -25,6 +26,21 @@ export interface RegisterUserResult {
 export class RegisterService {
   constructor(private readonly env: Env) {}
 
+  private async reserveInitialVanity(
+    usersRepository: UsersRepository,
+  ): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const vanity = generateInitialUserVanity();
+      const existing = await usersRepository.findByVanity(vanity);
+
+      if (!existing) {
+        return vanity;
+      }
+    }
+
+    throw new Error("Failed to allocate user vanity");
+  }
+
   async execute(input: RegisterUserInput): Promise<RegisterUserResult> {
     const db = new D1Client(this.env.APP_DB);
     const usersRepository = new UsersRepository(db);
@@ -46,6 +62,7 @@ export class RegisterService {
       this.env.OFFICIAL_ADMIN_EMAILS,
     );
     const timestamp = new Date().toISOString();
+    const vanity = await this.reserveInitialVanity(usersRepository);
     const user = await usersRepository.create({
       displayName: input.displayName?.trim() || null,
       email: normalizedEmail,
@@ -55,6 +72,7 @@ export class RegisterService {
         this.env.PASSWORD_PEPPER ?? "",
       ),
       status: isOfficial ? "active" : "pending_verification",
+      vanity,
     });
 
     if (isOfficial) {
