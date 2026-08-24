@@ -32,6 +32,60 @@ const organizationGameSchema = z
   })
   .openapi("OrganizationGameSummary");
 
+const organizationCardGameSchema = z
+  .object({
+    iconUrl: z.string().nullable(),
+    name: z.string(),
+    primary: z.boolean(),
+  })
+  .openapi("OrganizationCardGame");
+
+const organizationCardMembershipSchema = z
+  .object({
+    role: z.enum(["owner", "admin", "member"]).nullable(),
+    status: z.enum(["pending", "active"]).nullable(),
+  })
+  .nullable()
+  .openapi("OrganizationCardMembership");
+
+const organizationCardStatsSchema = z
+  .object({
+    characterCount: z.number().int().nonnegative(),
+    memberCount: z.number().int().nonnegative(),
+  })
+  .openapi("OrganizationCardStats");
+
+const organizationCardDisplaySchema = z
+  .object({
+    isSupportedOrg: z.boolean(),
+    maxVisibleGames: z.number().int().positive(),
+    maxVisibleTags: z.number().int().positive(),
+  })
+  .openapi("OrganizationCardDisplay");
+
+const organizationCardSchema = z
+  .object({
+    description: z.string().nullable(),
+    display: organizationCardDisplaySchema,
+    games: z.array(organizationCardGameSchema),
+    iconUrl: z.string().nullable(),
+    id: z.number().int().positive(),
+    membership: organizationCardMembershipSchema,
+    name: z.string(),
+    slug: z.string(),
+    stats: organizationCardStatsSchema,
+    tags: z.array(z.string()),
+  })
+  .openapi("OrganizationCard");
+
+const paginationSchema = z
+  .object({
+    hasMore: z.boolean(),
+    limit: z.number().int().positive(),
+    offset: z.number().int().nonnegative(),
+  })
+  .openapi("OffsetPagination");
+
 const characterSchema = z
   .object({
     claimedByUserId: z.number().int().positive().nullable(),
@@ -90,7 +144,8 @@ const gameListResponseSchema = z
 
 const organizationListResponseSchema = z
   .object({
-    organizations: z.array(organizationSearchItemSchema),
+    organizations: z.array(organizationCardSchema),
+    pagination: paginationSchema,
   })
   .openapi("OrganizationListResponse");
 
@@ -112,20 +167,10 @@ const organizationMembersResponseSchema = z
   })
   .openapi("OrganizationMembersResponse");
 
-const myOrganizationSchema = organizationSearchItemSchema
-  .extend({
-    membership: z.object({
-      approvedAt: z.string().nullable(),
-      joinedAt: z.string(),
-      role: z.enum(["owner", "admin", "member"]),
-      status: z.enum(["pending", "active"]),
-    }),
-  })
-  .openapi("MyOrganization");
-
 const myOrganizationsResponseSchema = z
   .object({
-    organizations: z.array(myOrganizationSchema),
+    organizations: z.array(organizationCardSchema),
+    pagination: paginationSchema,
   })
   .openapi("MyOrganizationsResponse");
 
@@ -134,9 +179,17 @@ const organizationSearchQuerySchema = z
     gameId: z.coerce.number().int().positive().optional(),
     gameSlug: z.string().trim().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(50).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
     q: z.string().trim().min(1).max(100).optional(),
   })
   .openapi("OrganizationSearchQuery");
+
+const myOrganizationsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(50).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+  })
+  .openapi("MyOrganizationsQuery");
 
 const gameListQuerySchema = z
   .object({
@@ -375,6 +428,9 @@ export const myOrganizationsRoute = createRoute({
   method: "get",
   path: "/me",
   tags: ["Organizations"],
+  request: {
+    query: myOrganizationsQuerySchema,
+  },
   responses: {
     200: {
       content: {
@@ -391,6 +447,10 @@ export const myOrganizationsRoute = createRoute({
     403: {
       content: { "application/json": { schema: errorSchema } },
       description: "User is not allowed to access organizations.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
     },
   },
 });

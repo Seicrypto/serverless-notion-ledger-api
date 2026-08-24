@@ -572,12 +572,221 @@
           "organizations": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/OrganizationSearchItem"
+              "$ref": "#/components/schemas/OrganizationCard"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/OffsetPagination"
+          }
+        },
+        "required": [
+          "organizations",
+          "pagination"
+        ]
+      },
+      "OrganizationCard": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display": {
+            "$ref": "#/components/schemas/OrganizationCardDisplay"
+          },
+          "games": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationCardGame"
+            }
+          },
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "membership": {
+            "$ref": "#/components/schemas/OrganizationCardMembership"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/OrganizationCardStats"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         },
         "required": [
-          "organizations"
+          "description",
+          "display",
+          "games",
+          "iconUrl",
+          "id",
+          "membership",
+          "name",
+          "slug",
+          "stats",
+          "tags"
+        ]
+      },
+      "OrganizationCardDisplay": {
+        "type": "object",
+        "properties": {
+          "isSupportedOrg": {
+            "type": "boolean"
+          },
+          "maxVisibleGames": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "maxVisibleTags": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "isSupportedOrg",
+          "maxVisibleGames",
+          "maxVisibleTags"
+        ]
+      },
+      "OrganizationCardGame": {
+        "type": "object",
+        "properties": {
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "iconUrl",
+          "name",
+          "primary"
+        ]
+      },
+      "OrganizationCardMembership": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              null
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending",
+              "active",
+              null
+            ]
+          }
+        },
+        "required": [
+          "role",
+          "status"
+        ]
+      },
+      "OrganizationCardStats": {
+        "type": "object",
+        "properties": {
+          "characterCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "memberCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "characterCount",
+          "memberCount"
+        ]
+      },
+      "OffsetPagination": {
+        "type": "object",
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "hasMore",
+          "limit",
+          "offset"
+        ]
+      },
+      "MyOrganizationsResponse": {
+        "type": "object",
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationCard"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/OffsetPagination"
+          }
+        },
+        "required": [
+          "organizations",
+          "pagination"
+        ]
+      },
+      "OrganizationDetailResponse": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationSearchItem"
+          }
+        },
+        "required": [
+          "organization"
         ]
       },
       "OrganizationSearchItem": {
@@ -717,81 +926,6 @@
           "slug",
           "updatedAt",
           "vanity"
-        ]
-      },
-      "MyOrganizationsResponse": {
-        "type": "object",
-        "properties": {
-          "organizations": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MyOrganization"
-            }
-          }
-        },
-        "required": [
-          "organizations"
-        ]
-      },
-      "MyOrganization": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/OrganizationSearchItem"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "membership": {
-                "type": "object",
-                "properties": {
-                  "approvedAt": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "joinedAt": {
-                    "type": "string"
-                  },
-                  "role": {
-                    "type": "string",
-                    "enum": [
-                      "owner",
-                      "admin",
-                      "member"
-                    ]
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "pending",
-                      "active"
-                    ]
-                  }
-                },
-                "required": [
-                  "approvedAt",
-                  "joinedAt",
-                  "role",
-                  "status"
-                ]
-              }
-            },
-            "required": [
-              "membership"
-            ]
-          }
-        ]
-      },
-      "OrganizationDetailResponse": {
-        "type": "object",
-        "properties": {
-          "organization": {
-            "$ref": "#/components/schemas/OrganizationSearchItem"
-          }
-        },
-        "required": [
-          "organization"
         ]
       },
       "OrganizationCharactersResponse": {
@@ -2071,6 +2205,18 @@
           },
           {
             "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string",
               "minLength": 1,
               "maxLength": 100
@@ -2176,6 +2322,30 @@
         "tags": [
           "Organizations"
         ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
             "description": "List organizations for the authenticated user.",
@@ -2203,6 +2373,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
                 }
               }
             }

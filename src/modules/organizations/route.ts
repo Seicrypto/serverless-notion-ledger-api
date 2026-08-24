@@ -379,6 +379,41 @@ async function buildOrganizationSearchItems(
   }));
 }
 
+const ORGANIZATION_CARD_MAX_VISIBLE_GAMES = 3;
+const ORGANIZATION_CARD_MAX_VISIBLE_TAGS = 3;
+
+function toOrganizationCard(
+  organization: Awaited<ReturnType<typeof buildOrganizationSearchItems>>[number],
+  membership: {
+    role: "owner" | "admin" | "member" | null;
+    status: "pending" | "active" | null;
+  } | null,
+) {
+  return {
+    description: organization.description,
+    display: {
+      isSupportedOrg: true,
+      maxVisibleGames: ORGANIZATION_CARD_MAX_VISIBLE_GAMES,
+      maxVisibleTags: ORGANIZATION_CARD_MAX_VISIBLE_TAGS,
+    },
+    games: organization.games.map((game) => ({
+      iconUrl: null,
+      name: game.displayName ?? game.gameName,
+      primary: game.isPrimary,
+    })),
+    iconUrl: organization.iconUrl,
+    id: organization.id,
+    membership,
+    name: organization.name,
+    slug: organization.slug,
+    stats: {
+      characterCount: organization.activeCharacterCount,
+      memberCount: organization.activeMemberCount,
+    },
+    tags: [],
+  };
+}
+
 organizationsRouter.openapi(listGamesRoute, async (c) => {
   const parsed = listGamesRoute.request.query.safeParse(c.req.query());
 
@@ -435,8 +470,9 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
     bindings.push(parsed.data.gameSlug);
   }
 
-  const limit = parsed.data.limit ?? 20;
-  bindings.push(limit);
+  const limit = parsed.data.limit ?? 10;
+  const offset = parsed.data.offset ?? 0;
+  bindings.push(limit + 1, offset);
 
   const rows = await db.all<{
     created_at: string;
@@ -456,20 +492,46 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
      LEFT JOIN games g ON g.id = og.game_id
      ${whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : ""}
      ORDER BY o.id ASC
-     LIMIT ?`,
+     LIMIT ?
+     OFFSET ?`,
     ...bindings,
   );
 
-  const organizations = await buildOrganizationSearchItems(db, rows);
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const organizations = await buildOrganizationSearchItems(db, pageRows);
 
-  return c.json({ organizations }, 200);
+  return c.json(
+    {
+      organizations: organizations.map((organization) =>
+        toOrganizationCard(organization, null),
+      ),
+      pagination: {
+        hasMore,
+        limit,
+        offset,
+      },
+    },
+    200,
+  );
 });
 
 organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
+  const parsed = myOrganizationsRoute.request.query.safeParse(c.req.query());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "query", ensureRequestId(c)),
+      422,
+    );
+  }
+
   try {
     const sessionAuth = new SessionAuthService(c.env);
     const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
     const db = new D1Client(c.env.APP_DB);
+    const limit = parsed.data.limit ?? 10;
+    const offset = parsed.data.offset ?? 0;
 
     const rows = await db.all<{
       approved_at: string | null;
@@ -500,9 +562,13 @@ organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
       session.user.id,
     );
 
+    const pagedRows = rows.slice(offset, offset + limit + 1);
+    const hasMore = pagedRows.length > limit;
+    const visibleRows = hasMore ? pagedRows.slice(0, limit) : pagedRows;
+
     const organizations = await buildOrganizationSearchItems(
       db,
-      rows.map((row) => ({
+      visibleRows.map((row) => ({
         created_at: row.created_at,
         created_by_user_id: row.created_by_user_id,
         description: row.description,
@@ -516,11 +582,9 @@ organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
     );
 
     const membershipById = new Map(
-      rows.map((row) => [
+      visibleRows.map((row) => [
         row.id,
         {
-          approvedAt: row.approved_at,
-          joinedAt: row.joined_at,
           role: row.membership_role,
           status: row.membership_status,
         },
@@ -529,10 +593,14 @@ organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
 
     return c.json(
       {
-        organizations: organizations.map((organization) => ({
-          ...organization,
-          membership: membershipById.get(organization.id)!,
-        })),
+        organizations: organizations.map((organization) =>
+          toOrganizationCard(organization, membershipById.get(organization.id) ?? null),
+        ),
+        pagination: {
+          hasMore,
+          limit,
+          offset,
+        },
       },
       200,
     );
