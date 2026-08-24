@@ -1,0 +1,64 @@
+name: CI D1 Integration
+
+on:
+  workflow_call:
+
+jobs:
+  ci-d1-integration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migration smoke test
+        id: migration_smoke
+        continue-on-error: true
+        run: npm run test:migrations:smoke
+
+      - name: Run local D1 integration test
+        id: d1_local
+        continue-on-error: true
+        run: npm run test:d1:local
+
+      - name: Summarize D1 integration results
+        if: always()
+        run: |
+          failures=0
+
+          echo "## D1 Integration Result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ steps.migration_smoke.outcome }}" != "success" ]; then
+            echo "- \`npm run test:migrations:smoke\` failed" >> "$GITHUB_STEP_SUMMARY"
+            failures=1
+          else
+            echo "- \`npm run test:migrations:smoke\` passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "${{ steps.d1_local.outcome }}" != "success" ]; then
+            echo "- \`npm run test:d1:local\` failed" >> "$GITHUB_STEP_SUMMARY"
+            failures=1
+          else
+            echo "- \`npm run test:d1:local\` passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$failures" -ne 0 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "One or more D1 integration checks failed." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "All D1 integration checks passed." >> "$GITHUB_STEP_SUMMARY"
