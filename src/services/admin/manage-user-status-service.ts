@@ -16,6 +16,31 @@ export class ManageUserStatusService {
     return users.filter((user) => user.status === "pending_approval");
   }
 
+  async listDisabledUsers(input: {
+    displayName?: string;
+    email?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{
+    hasMore: boolean;
+    users: UserRecord[];
+  }> {
+    const db = new D1Client(this.env.APP_DB);
+    const usersRepository = new UsersRepository(db);
+    const rows = await usersRepository.listByStatus({
+      displayName: input.displayName,
+      email: input.email,
+      limit: input.limit + 1,
+      offset: input.offset,
+      status: "disabled",
+    });
+
+    return {
+      hasMore: rows.length > input.limit,
+      users: rows.slice(0, input.limit),
+    };
+  }
+
   async setStatus(
     userId: number,
     targetStatus: ManagedUserTargetStatus,

@@ -12,6 +12,7 @@ import {
   approveUserRoute,
   disableUserRoute,
   enableUserRoute,
+  listDisabledUsersRoute,
   listPendingUsersRoute,
 } from "./schema";
 
@@ -43,6 +44,57 @@ adminRouter.openapi(listPendingUsersRoute, async (c) => {
     return c.json(
       {
         users: users.map((user) => ({
+          displayName: user.display_name,
+          email: user.email,
+          emailVerifiedAt: user.email_verified_at,
+          id: user.id,
+          status: user.status,
+        })),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403);
+    }
+
+    throw error;
+  }
+});
+
+adminRouter.openapi(listDisabledUsersRoute, async (c) => {
+  const parsed = listDisabledUsersRoute.request.query.safeParse(c.req.query());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    await sessionAuth.requireOfficialAdmin(getSessionCookie(c));
+
+    const service = new ManageUserStatusService(c.env);
+    const limit = parsed.data.limit ?? 10;
+    const offset = parsed.data.offset ?? 0;
+    const result = await service.listDisabledUsers({
+      displayName: parsed.data.displayName,
+      email: parsed.data.email,
+      limit,
+      offset,
+    });
+
+    return c.json(
+      {
+        pagination: {
+          hasMore: result.hasMore,
+          limit,
+          offset,
+        },
+        users: result.users.map((user) => ({
+          displayName: user.display_name,
           email: user.email,
           emailVerifiedAt: user.email_verified_at,
           id: user.id,
@@ -86,6 +138,7 @@ function registerManagedUserAction(
         {
           message,
           user: {
+            displayName: user.display_name,
             email: user.email,
             emailVerifiedAt: user.email_verified_at,
             id: user.id,

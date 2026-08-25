@@ -3,6 +3,7 @@ import { errorSchema, validationErrorSchema } from "../../lib/openapi";
 
 const managedUserSchema = z
   .object({
+    displayName: z.string().nullable(),
     email: z.string().email(),
     emailVerifiedAt: z.string().nullable(),
     id: z.number().int().positive(),
@@ -14,6 +15,14 @@ const managedUserSchema = z
     ]),
   })
   .openapi("ManagedUser");
+
+const offsetPaginationSchema = z
+  .object({
+    hasMore: z.boolean(),
+    limit: z.number().int().positive(),
+    offset: z.number().int().nonnegative(),
+  })
+  .openapi("AdminOffsetPagination");
 
 const managedUserResponseSchema = z
   .object({
@@ -27,6 +36,22 @@ const pendingUsersResponseSchema = z
     users: z.array(managedUserSchema),
   })
   .openapi("PendingUsersResponse");
+
+const disabledUsersQuerySchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(100).optional(),
+    email: z.string().trim().email().optional(),
+    limit: z.coerce.number().int().min(1).max(50).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+  })
+  .openapi("DisabledUsersQuery");
+
+const disabledUsersResponseSchema = z
+  .object({
+    pagination: offsetPaginationSchema,
+    users: z.array(managedUserSchema),
+  })
+  .openapi("DisabledUsersResponse");
 
 const userIdParamSchema = z
   .object({
@@ -54,6 +79,37 @@ export const listPendingUsersRoute = createRoute({
     403: {
       content: { "application/json": { schema: errorSchema } },
       description: "Admin access required.",
+    },
+  },
+});
+
+export const listDisabledUsersRoute = createRoute({
+  method: "get",
+  path: "/users/disabled",
+  tags: ["Admin"],
+  request: {
+    query: disabledUsersQuerySchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: disabledUsersResponseSchema,
+        },
+      },
+      description: "List disabled users.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Admin access required.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
     },
   },
 });
