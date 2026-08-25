@@ -98,6 +98,7 @@ const characterSchema = z
     organizationId: z.number().int().positive(),
     slug: z.string().nullable(),
     updatedAt: z.string(),
+    vanity: z.string().nullable(),
   })
   .openapi("OrganizationCharacter");
 
@@ -109,7 +110,7 @@ const organizationMemberSchema = z
     joinedAt: z.string(),
     organizationId: z.number().int().positive(),
     role: z.enum(["owner", "admin", "member"]),
-    status: z.enum(["pending", "active"]),
+    status: z.enum(["pending", "active", "left", "removed"]),
     userId: z.number().int().positive(),
   })
   .openapi("OrganizationMember");
@@ -288,6 +289,98 @@ const createCharacterResponseSchema = z
   })
   .openapi("CreateCharacterResponse");
 
+const memberAssignmentCharacterSchema = z
+  .object({
+    characterId: z.number().int().positive().nullable(),
+    description: z.string().nullable(),
+    name: z.string(),
+    slug: z.string().nullable(),
+    vanity: z.string().nullable(),
+  })
+  .openapi("OrganizationMemberAssignmentCharacter");
+
+const organizationManagementCharacterSchema = z
+  .object({
+    claimedBy: z
+      .object({
+        displayName: z.string().nullable(),
+        userId: z.number().int().positive(),
+        vanity: z.string().nullable(),
+      })
+      .nullable(),
+    description: z.string().nullable(),
+    displayName: z.string(),
+    id: z.number().int().positive(),
+    isClaimed: z.boolean(),
+    slug: z.string().nullable(),
+    vanity: z.string().nullable(),
+  })
+  .openapi("OrganizationManagementCharacter");
+
+const organizationManagementCharactersResponseSchema = z
+  .object({
+    characters: z.array(organizationManagementCharacterSchema),
+  })
+  .openapi("OrganizationManagementCharactersResponse");
+
+const organizationActiveMemberSchema = z
+  .object({
+    displayName: z.string().nullable(),
+    memberId: z.number().int().positive(),
+    role: z.enum(["owner", "admin", "member"]),
+    userId: z.number().int().positive(),
+    vanity: z.string().nullable(),
+  })
+  .openapi("OrganizationActiveMember");
+
+const organizationActiveMembersResponseSchema = z
+  .object({
+    members: z.array(organizationActiveMemberSchema),
+  })
+  .openapi("OrganizationActiveMembersResponse");
+
+const organizationPendingMemberSchema = z
+  .object({
+    displayName: z.string().nullable(),
+    invitedByUserId: z.number().int().positive().nullable(),
+    memberId: z.number().int().positive(),
+    pendingCharacter: memberAssignmentCharacterSchema.nullable(),
+    pendingKind: z.enum(["apply", "invite"]),
+    role: z.enum(["owner", "admin", "member"]),
+    status: z.literal("pending"),
+    userId: z.number().int().positive(),
+    userVanity: z.string().nullable(),
+  })
+  .openapi("OrganizationPendingMember");
+
+const organizationPendingMembersResponseSchema = z
+  .object({
+    members: z.array(organizationPendingMemberSchema),
+  })
+  .openapi("OrganizationPendingMembersResponse");
+
+const organizationAvailableCharactersResponseSchema = z
+  .object({
+    characters: z.array(memberAssignmentCharacterSchema),
+  })
+  .openapi("OrganizationAvailableCharactersResponse");
+
+const characterAssignmentRequestSchema = z
+  .object({
+    characterId: z.number().int().positive().optional(),
+    newCharacter: createCharacterRequestSchema.optional(),
+  })
+  .refine(
+    (value) =>
+      (value.characterId !== undefined && value.newCharacter === undefined) ||
+      (value.characterId === undefined && value.newCharacter !== undefined),
+    {
+      message: "Provide either characterId or newCharacter",
+      path: ["characterId"],
+    },
+  )
+  .openapi("CharacterAssignmentRequest");
+
 const addMemberRequestSchema = z
   .object({
     characterId: z.number().int().positive(),
@@ -296,11 +389,27 @@ const addMemberRequestSchema = z
   })
   .openapi("AddOrganizationMemberRequest");
 
-const applyMemberRequestSchema = z
+const applyMemberRequestSchema = characterAssignmentRequestSchema.openapi(
+  "ApplyOrganizationMemberRequest",
+);
+
+const inviteOrganizationMemberRequestSchema = z
   .object({
-    characterId: z.number().int().positive(),
+    role: z.enum(["admin", "member"]).optional(),
+    userId: z.number().int().positive().optional(),
+    userVanity: z.string().trim().min(1).max(120).optional(),
   })
-  .openapi("ApplyOrganizationMemberRequest");
+  .merge(characterAssignmentRequestSchema)
+  .refine(
+    (value) =>
+      (value.userId !== undefined && value.userVanity === undefined) ||
+      (value.userId === undefined && value.userVanity !== undefined),
+    {
+      message: "Provide either userId or userVanity",
+      path: ["userId"],
+    },
+  )
+  .openapi("InviteOrganizationMemberRequest");
 
 const organizationMemberResponseSchema = z
   .object({
@@ -317,18 +426,18 @@ const organizationMemberWithCharacterResponseSchema = z
   })
   .openapi("OrganizationMemberWithCharacterResponse");
 
-const organizationMemberIdParamSchema = z
+const organizationIdentifierParamSchema = z
   .object({
-    id: z.coerce.number().int().positive(),
-    memberId: z.coerce.number().int().positive(),
+    organization: z.string().trim().min(1).max(120),
   })
-  .openapi("OrganizationMemberIdParam");
+  .openapi("OrganizationIdentifierParam");
 
-const organizationIdParamSchema = z
+const organizationIdentifierMemberIdParamSchema = z
   .object({
-    id: z.coerce.number().int().positive(),
+    memberId: z.coerce.number().int().positive(),
+    organization: z.string().trim().min(1).max(120),
   })
-  .openapi("OrganizationIdParam");
+  .openapi("OrganizationIdentifierMemberIdParam");
 
 const deleteOrganizationResponseSchema = z
   .object({
@@ -457,10 +566,10 @@ export const myOrganizationsRoute = createRoute({
 
 export const organizationDetailRoute = createRoute({
   method: "get",
-  path: "/{id}",
+  path: "/{organization}",
   tags: ["Organizations"],
   request: {
-    params: organizationIdParamSchema,
+    params: organizationIdentifierParamSchema,
   },
   responses: {
     200: {
@@ -484,10 +593,10 @@ export const organizationDetailRoute = createRoute({
 
 export const organizationCharactersRoute = createRoute({
   method: "get",
-  path: "/{id}/characters",
+  path: "/{organization}/characters",
   tags: ["Organizations"],
   request: {
-    params: organizationIdParamSchema,
+    params: organizationIdentifierParamSchema,
   },
   responses: {
     200: {
@@ -511,10 +620,10 @@ export const organizationCharactersRoute = createRoute({
 
 export const organizationMembersRoute = createRoute({
   method: "get",
-  path: "/{id}/members",
+  path: "/{organization}/members",
   tags: ["Organizations"],
   request: {
-    params: organizationIdParamSchema,
+    params: organizationIdentifierParamSchema,
   },
   responses: {
     200: {
@@ -536,12 +645,195 @@ export const organizationMembersRoute = createRoute({
   },
 });
 
-export const deleteOrganizationRoute = createRoute({
-  method: "delete",
-  path: "/{id}",
+export const organizationManagementCharactersRoute = createRoute({
+  method: "get",
+  path: "/{organization}/management/characters",
   tags: ["Organizations"],
   request: {
-    params: organizationIdParamSchema,
+    params: organizationIdentifierParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationManagementCharactersResponseSchema,
+        },
+      },
+      description: "List characters for organization management.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization not found.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const organizationActiveMembersRoute = createRoute({
+  method: "get",
+  path: "/{organization}/management/members/active",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationActiveMembersResponseSchema,
+        },
+      },
+      description: "List active members for organization management.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization not found.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const organizationPendingMembersRoute = createRoute({
+  method: "get",
+  path: "/{organization}/management/members/pending",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationPendingMembersResponseSchema,
+        },
+      },
+      description: "List pending members for organization management.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization not found.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const organizationAvailableCharactersRoute = createRoute({
+  method: "get",
+  path: "/{organization}/characters/available",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationAvailableCharactersResponseSchema,
+        },
+      },
+      description: "List available organization characters.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization not found.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const inviteOrganizationMemberRoute = createRoute({
+  method: "post",
+  path: "/{organization}/members/invite",
+  tags: ["Organizations"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: inviteOrganizationMemberRequestSchema,
+        },
+      },
+      required: true,
+    },
+    params: organizationIdentifierParamSchema,
+  },
+  responses: {
+    201: {
+      content: {
+        "application/json": {
+          schema: organizationMemberResponseSchema,
+        },
+      },
+      description: "Invitation created successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization, user, or character not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Invitation conflicts with current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const deleteOrganizationRoute = createRoute({
+  method: "delete",
+  path: "/{organization}",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierParamSchema,
   },
   responses: {
     200: {
@@ -573,10 +865,10 @@ export const deleteOrganizationRoute = createRoute({
 
 export const createOrganizationCharacterRoute = createRoute({
   method: "post",
-  path: "/{id}/characters",
+  path: "/{organization}/characters",
   tags: ["Organizations"],
   request: {
-    params: organizationIdParamSchema,
+    params: organizationIdentifierParamSchema,
     body: {
       content: {
         "application/json": {
@@ -620,10 +912,10 @@ export const createOrganizationCharacterRoute = createRoute({
 
 export const addOrganizationMemberRoute = createRoute({
   method: "post",
-  path: "/{id}/members",
+  path: "/{organization}/members",
   tags: ["Organizations"],
   request: {
-    params: organizationIdParamSchema,
+    params: organizationIdentifierParamSchema,
     body: {
       content: {
         "application/json": {
@@ -667,10 +959,10 @@ export const addOrganizationMemberRoute = createRoute({
 
 export const applyOrganizationMemberRoute = createRoute({
   method: "post",
-  path: "/{id}/members/apply",
+  path: "/{organization}/members/apply",
   tags: ["Organizations"],
   request: {
-    params: organizationIdParamSchema,
+    params: organizationIdentifierParamSchema,
     body: {
       content: {
         "application/json": {
@@ -710,10 +1002,10 @@ export const applyOrganizationMemberRoute = createRoute({
 
 export const approveOrganizationMemberRoute = createRoute({
   method: "post",
-  path: "/{id}/members/{memberId}/approve",
+  path: "/{organization}/members/{memberId}/approve",
   tags: ["Organizations"],
   request: {
-    params: organizationMemberIdParamSchema,
+    params: organizationIdentifierMemberIdParamSchema,
   },
   responses: {
     200: {
@@ -747,12 +1039,207 @@ export const approveOrganizationMemberRoute = createRoute({
   },
 });
 
-export const updateOrganizationRoute = createRoute({
-  method: "patch",
-  path: "/{id}",
+export const rejectOrganizationMemberRoute = createRoute({
+  method: "post",
+  path: "/{organization}/members/{memberId}/reject",
   tags: ["Organizations"],
   request: {
-    params: organizationIdParamSchema,
+    params: organizationIdentifierMemberIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationMemberResponseSchema,
+        },
+      },
+      description: "Pending membership rejected successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or membership not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Membership cannot be rejected in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const appointOrganizationAdminRoute = createRoute({
+  method: "post",
+  path: "/{organization}/members/{memberId}/appoint-admin",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierMemberIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationMemberResponseSchema,
+        },
+      },
+      description: "Organization admin appointed successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization owner access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or membership not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Membership cannot be promoted in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const removeOrganizationAdminRoute = createRoute({
+  method: "post",
+  path: "/{organization}/members/{memberId}/remove-admin",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierMemberIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationMemberResponseSchema,
+        },
+      },
+      description: "Organization admin removed successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization owner access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or membership not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Membership cannot be demoted in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const acceptOrganizationInviteRoute = createRoute({
+  method: "post",
+  path: "/{organization}/members/{memberId}/accept-invite",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierMemberIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationMemberResponseSchema,
+        },
+      },
+      description: "Invitation accepted successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User is not allowed to accept this invitation.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or membership not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Invitation cannot be accepted in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const declineOrganizationInviteRoute = createRoute({
+  method: "post",
+  path: "/{organization}/members/{memberId}/decline-invite",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierMemberIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationMemberResponseSchema,
+        },
+      },
+      description: "Invitation declined successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User is not allowed to decline this invitation.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or membership not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Invitation cannot be declined in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const updateOrganizationRoute = createRoute({
+  method: "patch",
+  path: "/{organization}",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierParamSchema,
     body: {
       content: {
         "application/json": {

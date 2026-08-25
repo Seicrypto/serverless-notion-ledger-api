@@ -28,9 +28,10 @@ export class RegisterService {
 
   private async reserveInitialVanity(
     usersRepository: UsersRepository,
+    displayName?: string | null,
   ): Promise<string> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const vanity = generateInitialUserVanity();
+      const vanity = generateInitialUserVanity(displayName);
       const existing = await usersRepository.findByVanity(vanity);
 
       if (!existing) {
@@ -62,7 +63,10 @@ export class RegisterService {
       this.env.OFFICIAL_ADMIN_EMAILS,
     );
     const timestamp = new Date().toISOString();
-    const vanity = await this.reserveInitialVanity(usersRepository);
+    const vanity = await this.reserveInitialVanity(
+      usersRepository,
+      input.displayName,
+    );
     const user = await usersRepository.create({
       displayName: input.displayName?.trim() || null,
       email: normalizedEmail,

@@ -17,17 +17,19 @@ export class CharactersRepository {
         game_id,
         name,
         slug,
+        vanity,
         claimed_by_user_id,
         is_active,
         notes,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *`,
       input.organizationId,
       input.gameId ?? null,
       input.name,
       input.slug ?? null,
+      input.vanity ?? null,
       input.claimedByUserId ?? null,
       toSqliteBoolean(input.isActive ?? true),
       input.notes ?? null,
@@ -93,6 +95,14 @@ export class CharactersRepository {
       `SELECT * FROM characters
        WHERE id = ? AND deleted_at IS NULL`,
       id,
+    );
+  }
+
+  async findByVanity(vanity: string): Promise<CharacterRecord | null> {
+    return this.db.first<CharacterRecord>(
+      `SELECT * FROM characters
+       WHERE vanity = ? AND deleted_at IS NULL`,
+      vanity,
     );
   }
 
@@ -186,12 +196,13 @@ export class CharactersRepository {
 
     const updated = await this.db.first<CharacterRecord>(
       `UPDATE characters
-       SET game_id = ?, name = ?, slug = ?, claimed_by_user_id = ?, is_active = ?, notes = ?, updated_at = ?
+       SET game_id = ?, name = ?, slug = ?, vanity = ?, claimed_by_user_id = ?, is_active = ?, notes = ?, updated_at = ?
        WHERE id = ?
        RETURNING *`,
       input.gameId === undefined ? existing.game_id : input.gameId,
       input.name ?? existing.name,
       input.slug === undefined ? existing.slug : input.slug,
+      input.vanity === undefined ? existing.vanity : input.vanity,
       input.claimedByUserId === undefined
         ? existing.claimed_by_user_id
         : input.claimedByUserId,

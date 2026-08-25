@@ -11,6 +11,7 @@ export type OrganizationMemberStatus =
   | "active"
   | "left"
   | "removed";
+export type OrganizationMemberPendingKind = "apply" | "invite";
 export type OfficialStaffRole = "admin" | "staff";
 export type GameType = "game" | "activity";
 export type GameSource = "internal" | "steam";
@@ -111,6 +112,7 @@ export interface CharacterRecord {
   organization_id: number;
   slug: string | null;
   updated_at: string;
+  vanity: string | null;
 }
 
 export interface CreateCharacterInput {
@@ -121,6 +123,7 @@ export interface CreateCharacterInput {
   notes?: string | null;
   organizationId: number;
   slug?: string | null;
+  vanity?: string | null;
 }
 
 export interface UpdateCharacterInput {
@@ -130,6 +133,34 @@ export interface UpdateCharacterInput {
   name?: string;
   notes?: string | null;
   slug?: string | null;
+  vanity?: string | null;
+}
+
+export interface OrganizationMemberPendingActionRecord {
+  character_id: number | null;
+  created_at: string;
+  expires_at: string | null;
+  id: number;
+  invited_by_user_id: number | null;
+  kind: OrganizationMemberPendingKind;
+  member_id: number;
+  requested_character_name: string | null;
+  requested_character_notes: string | null;
+  requested_character_slug: string | null;
+  requested_game_id: number | null;
+  updated_at: string;
+}
+
+export interface CreateOrganizationMemberPendingActionInput {
+  characterId?: number | null;
+  expiresAt?: string | null;
+  invitedByUserId?: number | null;
+  kind: OrganizationMemberPendingKind;
+  memberId: number;
+  requestedCharacterName?: string | null;
+  requestedCharacterNotes?: string | null;
+  requestedCharacterSlug?: string | null;
+  requestedGameId?: number | null;
 }
 
 export interface GameRecord {
