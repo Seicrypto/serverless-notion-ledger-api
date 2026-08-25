@@ -445,6 +445,12 @@
       "ManagedUser": {
         "type": "object",
         "properties": {
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "email": {
             "type": "string",
             "format": "email"
@@ -470,10 +476,50 @@
           }
         },
         "required": [
+          "displayName",
           "email",
           "emailVerifiedAt",
           "id",
           "status"
+        ]
+      },
+      "DisabledUsersResponse": {
+        "type": "object",
+        "properties": {
+          "pagination": {
+            "$ref": "#/components/schemas/AdminOffsetPagination"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManagedUser"
+            }
+          }
+        },
+        "required": [
+          "pagination",
+          "users"
+        ]
+      },
+      "AdminOffsetPagination": {
+        "type": "object",
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "hasMore",
+          "limit",
+          "offset"
         ]
       },
       "ManagedUserResponse": {
@@ -990,6 +1036,12 @@
           },
           "updatedAt": {
             "type": "string"
+          },
+          "vanity": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1002,7 +1054,8 @@
           "notes",
           "organizationId",
           "slug",
-          "updatedAt"
+          "updatedAt",
+          "vanity"
         ]
       },
       "OrganizationMembersResponse": {
@@ -1054,7 +1107,9 @@
             "type": "string",
             "enum": [
               "pending",
-              "active"
+              "active",
+              "left",
+              "removed"
             ]
           },
           "userId": {
@@ -1071,6 +1126,360 @@
           "role",
           "status",
           "userId"
+        ]
+      },
+      "OrganizationManagementCharactersResponse": {
+        "type": "object",
+        "properties": {
+          "characters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationManagementCharacter"
+            }
+          }
+        },
+        "required": [
+          "characters"
+        ]
+      },
+      "OrganizationManagementCharacter": {
+        "type": "object",
+        "properties": {
+          "claimedBy": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "displayName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "userId": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "vanity": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "displayName",
+              "userId",
+              "vanity"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "isClaimed": {
+            "type": "boolean"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vanity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "claimedBy",
+          "description",
+          "displayName",
+          "id",
+          "isClaimed",
+          "slug",
+          "vanity"
+        ]
+      },
+      "OrganizationActiveMembersResponse": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationActiveMember"
+            }
+          }
+        },
+        "required": [
+          "members"
+        ]
+      },
+      "OrganizationActiveMember": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "memberId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          },
+          "userId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "vanity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "displayName",
+          "memberId",
+          "role",
+          "userId",
+          "vanity"
+        ]
+      },
+      "OrganizationPendingMembersResponse": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationPendingMember"
+            }
+          }
+        },
+        "required": [
+          "members"
+        ]
+      },
+      "OrganizationPendingMember": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "invitedByUserId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "memberId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "pendingCharacter": {
+            "$ref": "#/components/schemas/OrganizationMemberAssignmentCharacter"
+          },
+          "pendingKind": {
+            "type": "string",
+            "enum": [
+              "apply",
+              "invite"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending"
+            ]
+          },
+          "userId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "userVanity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "displayName",
+          "invitedByUserId",
+          "memberId",
+          "pendingCharacter",
+          "pendingKind",
+          "role",
+          "status",
+          "userId",
+          "userVanity"
+        ]
+      },
+      "OrganizationMemberAssignmentCharacter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "characterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vanity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "characterId",
+          "description",
+          "name",
+          "slug",
+          "vanity"
+        ]
+      },
+      "OrganizationAvailableCharactersResponse": {
+        "type": "object",
+        "properties": {
+          "characters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationMemberAssignmentCharacter"
+            }
+          }
+        },
+        "required": [
+          "characters"
+        ]
+      },
+      "OrganizationMemberResponse": {
+        "type": "object",
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/OrganizationMember"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "member",
+          "message"
+        ]
+      },
+      "InviteOrganizationMemberRequest": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ]
+          },
+          "userId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "userVanity": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "characterId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "newCharacter": {
+            "$ref": "#/components/schemas/CreateCharacterRequest"
+          }
+        }
+      },
+      "CreateCharacterRequest": {
+        "type": "object",
+        "properties": {
+          "gameId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 2,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "required": [
+          "gameId",
+          "name"
         ]
       },
       "CreateOrganizationResponse": {
@@ -1183,40 +1592,6 @@
           "message"
         ]
       },
-      "CreateCharacterRequest": {
-        "type": "object",
-        "properties": {
-          "gameId": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          },
-          "notes": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "maxLength": 1000
-          },
-          "slug": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 2,
-            "maxLength": 80,
-            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-          }
-        },
-        "required": [
-          "gameId",
-          "name"
-        ]
-      },
       "OrganizationMemberWithCharacterResponse": {
         "type": "object",
         "properties": {
@@ -1266,26 +1641,11 @@
           "characterId": {
             "type": "integer",
             "exclusiveMinimum": 0
-          }
-        },
-        "required": [
-          "characterId"
-        ]
-      },
-      "OrganizationMemberResponse": {
-        "type": "object",
-        "properties": {
-          "member": {
-            "$ref": "#/components/schemas/OrganizationMember"
           },
-          "message": {
-            "type": "string"
+          "newCharacter": {
+            "$ref": "#/components/schemas/CreateCharacterRequest"
           }
-        },
-        "required": [
-          "member",
-          "message"
-        ]
+        }
       },
       "DeleteOrganizationResponse": {
         "type": "object",
@@ -1886,6 +2246,98 @@
         }
       }
     },
+    "/admin/users/disabled": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": false,
+            "name": "displayName",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "required": false,
+            "name": "email",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List disabled users.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisabledUsersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/users/{id}/approve": {
       "post": {
         "tags": [
@@ -2390,7 +2842,7 @@
         }
       }
     },
-    "/organizations/{id}": {
+    "/organizations/{organization}": {
       "get": {
         "tags": [
           "Organizations"
@@ -2398,11 +2850,12 @@
         "parameters": [
           {
             "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": true,
-            "name": "id",
+            "name": "organization",
             "in": "path"
           }
         ],
@@ -2446,11 +2899,12 @@
         "parameters": [
           {
             "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": true,
-            "name": "id",
+            "name": "organization",
             "in": "path"
           }
         ],
@@ -2514,11 +2968,12 @@
         "parameters": [
           {
             "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": true,
-            "name": "id",
+            "name": "organization",
             "in": "path"
           }
         ],
@@ -2596,7 +3051,7 @@
         }
       }
     },
-    "/organizations/{id}/characters": {
+    "/organizations/{organization}/characters": {
       "get": {
         "tags": [
           "Organizations"
@@ -2604,11 +3059,12 @@
         "parameters": [
           {
             "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": true,
-            "name": "id",
+            "name": "organization",
             "in": "path"
           }
         ],
@@ -2652,11 +3108,12 @@
         "parameters": [
           {
             "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": true,
-            "name": "id",
+            "name": "organization",
             "in": "path"
           }
         ],
@@ -2734,7 +3191,7 @@
         }
       }
     },
-    "/organizations/{id}/members": {
+    "/organizations/{organization}/members": {
       "get": {
         "tags": [
           "Organizations"
@@ -2742,11 +3199,12 @@
         "parameters": [
           {
             "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": true,
-            "name": "id",
+            "name": "organization",
             "in": "path"
           }
         ],
@@ -2790,11 +3248,12 @@
         "parameters": [
           {
             "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": true,
-            "name": "id",
+            "name": "organization",
             "in": "path"
           }
         ],
@@ -2872,7 +3331,281 @@
         }
       }
     },
-    "/organizations/{id}/members/apply": {
+    "/organizations/{organization}/management/characters": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List characters for organization management.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationManagementCharactersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/management/members/active": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List active members for organization management.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationActiveMembersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/management/members/pending": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List pending members for organization management.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationPendingMembersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/characters/available": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List available organization characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationAvailableCharactersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/members/invite": {
       "post": {
         "tags": [
           "Organizations"
@@ -2880,11 +3613,103 @@
         "parameters": [
           {
             "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": true,
-            "name": "id",
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteOrganizationMemberRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Invitation created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization, user, or character not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invitation conflicts with current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/members/apply": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
             "in": "path"
           }
         ],
@@ -2952,7 +3777,7 @@
         }
       }
     },
-    "/organizations/{id}/members/{memberId}/approve": {
+    "/organizations/{organization}/members/{memberId}/approve": {
       "post": {
         "tags": [
           "Organizations"
@@ -2964,16 +3789,17 @@
               "exclusiveMinimum": 0
             },
             "required": true,
-            "name": "id",
+            "name": "memberId",
             "in": "path"
           },
           {
             "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": true,
-            "name": "memberId",
+            "name": "organization",
             "in": "path"
           }
         ],
@@ -3020,6 +3846,456 @@
           },
           "409": {
             "description": "Membership cannot be approved in its current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/members/{memberId}/reject": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "memberId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending membership rejected successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization or membership not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Membership cannot be rejected in its current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/members/{memberId}/appoint-admin": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "memberId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization admin appointed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization owner access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization or membership not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Membership cannot be promoted in its current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/members/{memberId}/remove-admin": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "memberId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization admin removed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization owner access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization or membership not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Membership cannot be demoted in its current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/members/{memberId}/accept-invite": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "memberId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invitation accepted successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "User is not allowed to accept this invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization or membership not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invitation cannot be accepted in its current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/members/{memberId}/decline-invite": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "memberId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invitation declined successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "User is not allowed to decline this invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization or membership not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invitation cannot be declined in its current state.",
             "content": {
               "application/json": {
                 "schema": {

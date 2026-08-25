@@ -1,4 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import { D1Client } from "../../infrastructure/d1/d1-client";
 import {
   AppError,
@@ -9,33 +10,76 @@ import {
   ensureRequestId,
 } from "../../lib/errors";
 import { getSessionCookie } from "../../lib/session-cookie";
-import { generateInitialOrganizationVanity } from "../../lib/vanity";
+import {
+  generateInitialCharacterVanity,
+  generateInitialOrganizationVanity,
+} from "../../lib/vanity";
 import { CharactersRepository } from "../../repositories/characters-repository";
 import { GamesRepository } from "../../repositories/games-repository";
+import { OrganizationMemberPendingActionsRepository } from "../../repositories/organization-member-pending-actions-repository";
 import { SessionAuthService } from "../../services/auth/session-auth-service";
 import { OrganizationMembersRepository } from "../../repositories/organization-members-repository";
 import { OrganizationsRepository } from "../../repositories/organizations-repository";
 import { UsersRepository } from "../../repositories/users-repository";
 import type { AppBindings } from "../../types/hono";
 import {
+  requireTargetOrganizationManager,
+  requireTargetOrganizationOwner,
+} from "./middleware";
+import {
   addOrganizationMemberRoute,
+  acceptOrganizationInviteRoute,
   applyOrganizationMemberRoute,
+  appointOrganizationAdminRoute,
   approveOrganizationMemberRoute,
   createOrganizationRoute,
   createOrganizationCharacterRoute,
   currentOrganizationMembersRoute,
   currentOrganizationRoute,
   deleteOrganizationRoute,
+  declineOrganizationInviteRoute,
+  inviteOrganizationMemberRoute,
   listGamesRoute,
   listOrganizationsRoute,
   myOrganizationsRoute,
+  organizationActiveMembersRoute,
+  organizationAvailableCharactersRoute,
   organizationCharactersRoute,
   organizationDetailRoute,
+  organizationManagementCharactersRoute,
   organizationMembersRoute,
+  organizationPendingMembersRoute,
+  removeOrganizationAdminRoute,
+  rejectOrganizationMemberRoute,
   updateOrganizationRoute,
 } from "./schema";
 
 export const organizationsRouter = new OpenAPIHono<AppBindings>();
+
+organizationsRouter.use(
+  "/:organization/management/*",
+  requireTargetOrganizationManager,
+);
+organizationsRouter.use(
+  "/:organization/members/invite",
+  requireTargetOrganizationManager,
+);
+organizationsRouter.use(
+  "/:organization/members/:memberId/approve",
+  requireTargetOrganizationManager,
+);
+organizationsRouter.use(
+  "/:organization/members/:memberId/reject",
+  requireTargetOrganizationManager,
+);
+organizationsRouter.use(
+  "/:organization/members/:memberId/appoint-admin",
+  requireTargetOrganizationOwner,
+);
+organizationsRouter.use(
+  "/:organization/members/:memberId/remove-admin",
+  requireTargetOrganizationOwner,
+);
 
 function validationErrorFromIssues(
   issues: Array<{ message: string; path: PropertyKey[] }>,
@@ -104,6 +148,12 @@ function mapCharacterConflict(error: unknown): AppError | null {
     });
   }
 
+  if (error.message.includes("characters.vanity")) {
+    return new AppError("Character vanity already exists", 409, {
+      code: "CHARACTER_VANITY_EXISTS",
+    });
+  }
+
   return null;
 }
 
@@ -155,6 +205,7 @@ function toCharacterResponse(
     organizationId: character.organization_id,
     slug: character.slug,
     updatedAt: character.updated_at,
+    vanity: character.vanity,
   };
 }
 
@@ -203,15 +254,36 @@ function toOrganizationWorkflowMemberResponse(
   };
 }
 
-function generateInitialVanity(): string {
-  return generateInitialOrganizationVanity();
+function getRouteOrganization(c: Context<AppBindings>) {
+  const organization = c.get("organization");
+
+  if (!organization) {
+    throw new Error("Organization middleware context is missing");
+  }
+
+  return organization;
+}
+
+function getRouteSession(c: Context<AppBindings>) {
+  const session = c.get("session");
+
+  if (!session) {
+    throw new Error("Session middleware context is missing");
+  }
+
+  return session;
+}
+
+function isNumericIdentifier(value: string): boolean {
+  return /^\d+$/.test(value);
 }
 
 async function reserveInitialVanity(
   organizations: OrganizationsRepository,
+  organizationName?: string | null,
 ): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const vanity = generateInitialVanity();
+    const vanity = generateInitialOrganizationVanity(organizationName);
     const existing = await organizations.findByVanity(vanity);
 
     if (!existing) {
@@ -221,6 +293,24 @@ async function reserveInitialVanity(
 
   throw new AppError("Failed to allocate organization vanity", 503, {
     code: "ORGANIZATION_VANITY_ALLOCATION_FAILED",
+  });
+}
+
+async function reserveCharacterVanity(
+  characters: CharactersRepository,
+  characterName?: string | null,
+): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const vanity = generateInitialCharacterVanity(characterName);
+    const existing = await characters.findByVanity(vanity);
+
+    if (!existing) {
+      return vanity;
+    }
+  }
+
+  throw new AppError("Failed to allocate character vanity", 503, {
+    code: "CHARACTER_VANITY_ALLOCATION_FAILED",
   });
 }
 
@@ -235,6 +325,40 @@ async function requireOrganizationById(
   }
 
   return organization;
+}
+
+async function requireOrganizationByIdentifier(
+  organizations: OrganizationsRepository,
+  identifier: string,
+) {
+  const organization = isNumericIdentifier(identifier)
+    ? await organizations.findById(Number(identifier))
+    : await organizations.findByVanity(identifier);
+
+  if (!organization) {
+    throw new NotFoundError("Organization not found");
+  }
+
+  return organization;
+}
+
+async function requireUserByIdentifier(
+  users: UsersRepository,
+  input: {
+    userId?: number;
+    userVanity?: string;
+  },
+) {
+  const user =
+    input.userId !== undefined
+      ? await users.findById(input.userId)
+      : await users.findByVanity(input.userVanity!);
+
+  if (!user) {
+    throw new NotFoundError("Target user not found");
+  }
+
+  return user;
 }
 
 async function requireOrganizationManager(
@@ -261,6 +385,7 @@ async function requireOrganizationManager(
 
 async function requireAvailableCharacter(
   characters: CharactersRepository,
+  pendingActions: OrganizationMemberPendingActionsRepository,
   organizationId: number,
   characterId: number,
 ) {
@@ -282,7 +407,40 @@ async function requireAvailableCharacter(
     });
   }
 
+  const pendingReservation = await pendingActions.findByCharacterId(character.id);
+  if (pendingReservation) {
+    throw new ConflictError("Character is reserved by a pending membership", {
+      code: "CHARACTER_PENDING_RESERVED",
+    });
+  }
+
   return character;
+}
+
+function pendingActionExpiresAt(days = 30): string {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + days);
+  return expiresAt.toISOString();
+}
+
+async function createPendingCharacterFromDraft(
+  characters: CharactersRepository,
+  organizationId: number,
+  draft: {
+    gameId: number;
+    name: string;
+    notes?: string | null;
+    slug?: string | null;
+  },
+) {
+  return characters.create({
+    gameId: draft.gameId,
+    name: draft.name,
+    notes: draft.notes ?? null,
+    organizationId,
+    slug: draft.slug ?? null,
+    vanity: await reserveCharacterVanity(characters, draft.name),
+  });
 }
 
 async function buildOrganizationSearchItems(
@@ -625,7 +783,10 @@ organizationsRouter.openapi(organizationDetailRoute, async (c) => {
   try {
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
-    const organization = await requireOrganizationById(organizations, parsed.data.id);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      parsed.data.organization,
+    );
     const [detail] = await buildOrganizationSearchItems(db, [organization]);
 
     return c.json({ organization: detail }, 200);
@@ -651,11 +812,14 @@ organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
     const characters = new CharactersRepository(db);
-    await requireOrganizationById(organizations, parsed.data.id);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      parsed.data.organization,
+    );
 
     return c.json(
       {
-        characters: (await characters.listByOrganization(parsed.data.id)).map(
+        characters: (await characters.listByOrganization(organization.id)).map(
           toCharacterResponse,
         ),
       },
@@ -683,11 +847,14 @@ organizationsRouter.openapi(organizationMembersRoute, async (c) => {
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
     const members = new OrganizationMembersRepository(db);
-    await requireOrganizationById(organizations, parsed.data.id);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      parsed.data.organization,
+    );
 
     return c.json(
       {
-        members: (await members.listByOrganization(parsed.data.id, "active")).map(
+        members: (await members.listByOrganization(organization.id, "active")).map(
           toOrganizationWorkflowMemberResponse,
         ),
       },
@@ -696,6 +863,405 @@ organizationsRouter.openapi(organizationMembersRoute, async (c) => {
   } catch (error) {
     if (error instanceof AppError) {
       return c.json(buildErrorResponseBody(c, error), error.status as 404);
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(organizationManagementCharactersRoute, async (c) => {
+  const parsed = organizationManagementCharactersRoute.request.params.safeParse(
+    c.req.param(),
+  );
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+
+    const characters = await db.all<{
+      claimed_by_user_id: number | null;
+      claimed_display_name: string | null;
+      claimed_vanity: string | null;
+      id: number;
+      name: string;
+      notes: string | null;
+      slug: string | null;
+      vanity: string | null;
+    }>(
+      `SELECT
+         c.id,
+         c.name,
+         c.slug,
+         c.vanity,
+         c.notes,
+         c.claimed_by_user_id,
+         u.display_name AS claimed_display_name,
+         u.vanity AS claimed_vanity
+       FROM characters c
+       LEFT JOIN users u ON u.id = c.claimed_by_user_id
+       WHERE c.organization_id = ?
+         AND c.deleted_at IS NULL
+       ORDER BY c.id ASC`,
+      organization.id,
+    );
+
+    return c.json(
+      {
+        characters: characters.map((character) => ({
+          claimedBy:
+            character.claimed_by_user_id === null
+              ? null
+              : {
+                  displayName: character.claimed_display_name,
+                  userId: character.claimed_by_user_id,
+                  vanity: character.claimed_vanity,
+                },
+          description: character.notes,
+          displayName: character.name,
+          id: character.id,
+          isClaimed: character.claimed_by_user_id !== null,
+          slug: character.slug,
+          vanity: character.vanity,
+        })),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(organizationActiveMembersRoute, async (c) => {
+  const parsed = organizationActiveMembersRoute.request.params.safeParse(
+    c.req.param(),
+  );
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+
+    const activeMembers = await db.all<{
+      display_name: string | null;
+      member_id: number;
+      role: "owner" | "admin" | "member";
+      user_id: number;
+      vanity: string | null;
+    }>(
+      `SELECT
+         m.id AS member_id,
+         m.user_id,
+         m.role,
+         u.display_name,
+         u.vanity
+       FROM organization_members m
+       INNER JOIN users u ON u.id = m.user_id
+       WHERE m.organization_id = ?
+         AND m.status = 'active'
+       ORDER BY m.id ASC`,
+      organization.id,
+    );
+
+    return c.json(
+      {
+        members: activeMembers.map((member) => ({
+          displayName: member.display_name,
+          memberId: member.member_id,
+          role: member.role,
+          userId: member.user_id,
+          vanity: member.vanity,
+        })),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(organizationPendingMembersRoute, async (c) => {
+  const parsed = organizationPendingMembersRoute.request.params.safeParse(
+    c.req.param(),
+  );
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+
+    const pendingMembers = await db.all<{
+      character_id: number | null;
+      character_name: string | null;
+      character_notes: string | null;
+      character_slug: string | null;
+      character_vanity: string | null;
+      display_name: string | null;
+      invited_by_user_id: number | null;
+      kind: "apply" | "invite";
+      member_id: number;
+      role: "owner" | "admin" | "member";
+      status: "pending";
+      user_id: number;
+      user_vanity: string | null;
+    }>(
+      `SELECT
+         m.id AS member_id,
+         m.user_id,
+         m.role,
+         m.status,
+         u.display_name,
+         u.vanity AS user_vanity,
+         p.kind,
+         p.invited_by_user_id,
+         c.id AS character_id,
+         c.name AS character_name,
+         c.slug AS character_slug,
+         c.vanity AS character_vanity,
+         c.notes AS character_notes
+       FROM organization_members m
+       INNER JOIN users u ON u.id = m.user_id
+       INNER JOIN organization_member_pending_actions p ON p.member_id = m.id
+       LEFT JOIN characters c ON c.id = p.character_id
+       WHERE m.organization_id = ?
+         AND m.status = 'pending'
+       ORDER BY m.id ASC`,
+      organization.id,
+    );
+
+    return c.json(
+      {
+        members: pendingMembers.map((member) => ({
+          displayName: member.display_name,
+          invitedByUserId: member.invited_by_user_id,
+          memberId: member.member_id,
+          pendingCharacter:
+            member.character_name === null
+              ? null
+              : {
+                  characterId: member.character_id,
+                  description: member.character_notes,
+                  name: member.character_name,
+                  slug: member.character_slug,
+                  vanity: member.character_vanity,
+                },
+          pendingKind: member.kind,
+          role: member.role,
+          status: member.status,
+          userId: member.user_id,
+          userVanity: member.user_vanity,
+        })),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
+  const parsed = organizationAvailableCharactersRoute.request.params.safeParse(
+    c.req.param(),
+  );
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    await sessionAuth.requireActiveUser(getSessionCookie(c));
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      parsed.data.organization,
+    );
+
+    const characters = await db.all<{
+      id: number;
+      name: string;
+      notes: string | null;
+      slug: string | null;
+      vanity: string | null;
+    }>(
+      `SELECT
+         c.id,
+         c.name,
+         c.slug,
+         c.vanity,
+         c.notes
+       FROM characters c
+       LEFT JOIN organization_member_pending_actions p ON p.character_id = c.id
+       WHERE c.organization_id = ?
+         AND c.deleted_at IS NULL
+         AND c.is_active = 1
+         AND c.claimed_by_user_id IS NULL
+         AND p.id IS NULL
+       ORDER BY c.id ASC`,
+      organization.id,
+    );
+
+    return c.json(
+      {
+        characters: characters.map((character) => ({
+          characterId: character.id,
+          description: character.notes,
+          name: character.name,
+          slug: character.slug,
+          vanity: character.vanity,
+        })),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 404);
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(inviteOrganizationMemberRoute, async (c) => {
+  const params = inviteOrganizationMemberRoute.request.params.safeParse(c.req.param());
+  const schema =
+    inviteOrganizationMemberRoute.request.body.content["application/json"].schema;
+  const payload = await c.req.json();
+  const body = schema.safeParse(payload);
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  if (!body.success) {
+    return c.json(
+      validationErrorFromIssues(body.error.issues, "body", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = getRouteSession(c);
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+    const members = new OrganizationMembersRepository(db);
+    const characters = new CharactersRepository(db);
+    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
+    const users = new UsersRepository(db);
+
+    const targetUser = await requireUserByIdentifier(users, {
+      userId: body.data.userId,
+      userVanity: body.data.userVanity,
+    });
+    if (targetUser.status !== "active") {
+      throw new NotFoundError("Target user not found");
+    }
+
+    const existingMembership = await members.findByOrganizationAndUser(
+      organization.id,
+      targetUser.id,
+    );
+    if (
+      existingMembership &&
+      (existingMembership.status === "active" || existingMembership.status === "pending")
+    ) {
+      throw new ConflictError("User is already attached to this organization", {
+        code: "ORGANIZATION_MEMBER_EXISTS",
+      });
+    }
+
+    const reservedCharacter =
+      body.data.characterId !== undefined
+        ? await requireAvailableCharacter(
+            characters,
+            pendingActions,
+            organization.id,
+            body.data.characterId,
+          )
+        : await createPendingCharacterFromDraft(characters, organization.id, {
+            gameId: body.data.newCharacter!.gameId,
+            name: body.data.newCharacter!.name,
+            notes: body.data.newCharacter!.notes ?? null,
+            slug: body.data.newCharacter!.slug ?? null,
+          });
+
+    const member = await members.createOrReactivate({
+      organizationId: organization.id,
+      role: body.data.role ?? "member",
+      status: "pending",
+      userId: targetUser.id,
+    });
+    await pendingActions.create({
+      characterId: reservedCharacter.id,
+      expiresAt: pendingActionExpiresAt(),
+      invitedByUserId: session.user.id,
+      kind: "invite",
+      memberId: member.id,
+      requestedCharacterName: body.data.newCharacter?.name ?? null,
+      requestedCharacterNotes: body.data.newCharacter?.notes ?? null,
+      requestedCharacterSlug: body.data.newCharacter?.slug ?? null,
+      requestedGameId: body.data.newCharacter?.gameId ?? null,
+    });
+
+    return c.json(
+      {
+        member: toOrganizationWorkflowMemberResponse(member),
+        message: "Invitation created successfully.",
+      },
+      201,
+    );
+  } catch (error) {
+    const characterConflict = mapCharacterConflict(error);
+    if (characterConflict) {
+      return c.json(buildErrorResponseBody(c, characterConflict), 409);
+    }
+
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
     }
     throw error;
   }
@@ -721,7 +1287,7 @@ organizationsRouter.openapi(createOrganizationRoute, async (c) => {
     const organizations = new OrganizationsRepository(db);
     const members = new OrganizationMembersRepository(db);
     const characters = new CharactersRepository(db);
-    const vanity = await reserveInitialVanity(organizations);
+    const vanity = await reserveInitialVanity(organizations, parsed.data.name);
 
     const organization = await organizations.create({
       createdByUserId: session.user.id,
@@ -746,6 +1312,10 @@ organizationsRouter.openapi(createOrganizationRoute, async (c) => {
       notes: parsed.data.initialCharacter.notes,
       organizationId: organization.id,
       slug: parsed.data.initialCharacter.slug,
+      vanity: await reserveCharacterVanity(
+        characters,
+        parsed.data.initialCharacter.name,
+      ),
     });
 
     return c.json(
@@ -812,15 +1382,19 @@ organizationsRouter.openapi(createOrganizationCharacterRoute, async (c) => {
     const members = new OrganizationMembersRepository(db);
     const characters = new CharactersRepository(db);
 
-    await requireOrganizationById(organizations, params.data.id);
-    await requireOrganizationManager(members, params.data.id, session.user.id);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
+    await requireOrganizationManager(members, organization.id, session.user.id);
 
     const character = await characters.create({
       gameId: body.data.gameId,
       name: body.data.name,
       notes: body.data.notes,
-      organizationId: params.data.id,
+      organizationId: organization.id,
       slug: body.data.slug,
+      vanity: await reserveCharacterVanity(characters, body.data.name),
     });
 
     return c.json(
@@ -876,10 +1450,14 @@ organizationsRouter.openapi(addOrganizationMemberRoute, async (c) => {
     const organizations = new OrganizationsRepository(db);
     const members = new OrganizationMembersRepository(db);
     const characters = new CharactersRepository(db);
+    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
     const users = new UsersRepository(db);
 
-    await requireOrganizationById(organizations, params.data.id);
-    await requireOrganizationManager(members, params.data.id, session.user.id);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
+    await requireOrganizationManager(members, organization.id, session.user.id);
 
     const targetUser = await users.findById(body.data.userId);
     if (!targetUser || targetUser.status !== "active") {
@@ -887,7 +1465,7 @@ organizationsRouter.openapi(addOrganizationMemberRoute, async (c) => {
     }
 
     const existingMembership = await members.findByOrganizationAndUser(
-      params.data.id,
+      organization.id,
       body.data.userId,
     );
     if (
@@ -901,7 +1479,7 @@ organizationsRouter.openapi(addOrganizationMemberRoute, async (c) => {
     }
 
     const existingCharacterClaims = await characters.listByOrganizationAndUser(
-      params.data.id,
+      organization.id,
       body.data.userId,
     );
     if (existingCharacterClaims.length > 0) {
@@ -915,14 +1493,15 @@ organizationsRouter.openapi(addOrganizationMemberRoute, async (c) => {
 
     const character = await requireAvailableCharacter(
       characters,
-      params.data.id,
+      pendingActions,
+      organization.id,
       body.data.characterId,
     );
     const claimedCharacter = await characters.update(character.id, {
       claimedByUserId: body.data.userId,
     });
     const member = await members.createOrReactivate({
-      organizationId: params.data.id,
+      organizationId: organization.id,
       role: body.data.role ?? "member",
       status: "active",
       userId: body.data.userId,
@@ -976,11 +1555,15 @@ organizationsRouter.openapi(applyOrganizationMemberRoute, async (c) => {
     const organizations = new OrganizationsRepository(db);
     const members = new OrganizationMembersRepository(db);
     const characters = new CharactersRepository(db);
+    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
 
-    await requireOrganizationById(organizations, params.data.id);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
 
     const existingMembership = await members.findByOrganizationAndUser(
-      params.data.id,
+      organization.id,
       session.user.id,
     );
     if (
@@ -994,7 +1577,7 @@ organizationsRouter.openapi(applyOrganizationMemberRoute, async (c) => {
     }
 
     const existingCharacterClaims = await characters.listByOrganizationAndUser(
-      params.data.id,
+      organization.id,
       session.user.id,
     );
     if (existingCharacterClaims.length > 0) {
@@ -1006,24 +1589,43 @@ organizationsRouter.openapi(applyOrganizationMemberRoute, async (c) => {
       );
     }
 
-    const character = await requireAvailableCharacter(
-      characters,
-      params.data.id,
-      body.data.characterId,
-    );
-    const claimedCharacter = await characters.update(character.id, {
-      claimedByUserId: session.user.id,
-    });
+    const pendingCharacter =
+      body.data.characterId !== undefined
+        ? await requireAvailableCharacter(
+            characters,
+            pendingActions,
+            organization.id,
+            body.data.characterId,
+          )
+        : await createPendingCharacterFromDraft(characters, organization.id, {
+            gameId: body.data.newCharacter!.gameId,
+            name: body.data.newCharacter!.name,
+            notes: body.data.newCharacter!.notes ?? null,
+            slug: body.data.newCharacter!.slug ?? null,
+          });
     const member = await members.createOrReactivate({
-      organizationId: params.data.id,
+      organizationId: organization.id,
       role: "member",
       status: "pending",
       userId: session.user.id,
     });
+    await pendingActions.create({
+      characterId: pendingCharacter.id,
+      expiresAt: pendingActionExpiresAt(),
+      kind: "apply",
+      memberId: member.id,
+      requestedCharacterName:
+        body.data.newCharacter?.name ?? null,
+      requestedCharacterNotes:
+        body.data.newCharacter?.notes ?? null,
+      requestedCharacterSlug:
+        body.data.newCharacter?.slug ?? null,
+      requestedGameId: body.data.newCharacter?.gameId ?? null,
+    });
 
     return c.json(
       {
-        character: toCharacterResponse(claimedCharacter),
+        character: toCharacterResponse(pendingCharacter),
         member: toOrganizationWorkflowMemberResponse(member),
         message: "Membership application submitted successfully.",
       },
@@ -1052,18 +1654,14 @@ organizationsRouter.openapi(approveOrganizationMemberRoute, async (c) => {
   }
 
   try {
-    const sessionAuth = new SessionAuthService(c.env);
-    const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
     const db = new D1Client(c.env.APP_DB);
-    const organizations = new OrganizationsRepository(db);
+    const organization = getRouteOrganization(c);
     const members = new OrganizationMembersRepository(db);
     const characters = new CharactersRepository(db);
-
-    await requireOrganizationById(organizations, params.data.id);
-    await requireOrganizationManager(members, params.data.id, session.user.id);
+    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
 
     const member = await members.findById(params.data.memberId);
-    if (!member || member.organization_id !== params.data.id) {
+    if (!member || member.organization_id !== organization.id) {
       throw new NotFoundError("Organization membership not found");
     }
 
@@ -1073,20 +1671,40 @@ organizationsRouter.openapi(approveOrganizationMemberRoute, async (c) => {
       });
     }
 
-    const claimedCharacters = await characters.listByOrganizationAndUser(
-      params.data.id,
-      member.user_id,
-    );
-    if (claimedCharacters.length === 0) {
+    const pendingAction = await pendingActions.findByMemberId(member.id);
+    if (!pendingAction || pendingAction.kind !== "apply" || !pendingAction.character_id) {
       throw new ConflictError(
-        "Pending member must have at least one claimed character",
+        "Pending membership is missing its reserved character",
         {
           code: "ORGANIZATION_MEMBER_CHARACTER_REQUIRED",
         },
       );
     }
 
+    const character = await characters.findById(pendingAction.character_id);
+    if (!character || character.organization_id !== organization.id) {
+      throw new ConflictError("Pending membership character is no longer available", {
+        code: "ORGANIZATION_MEMBER_CHARACTER_REQUIRED",
+      });
+    }
+
+    if (
+      character.claimed_by_user_id !== null &&
+      character.claimed_by_user_id !== member.user_id
+    ) {
+      throw new ConflictError("Pending membership character is already claimed", {
+        code: "CHARACTER_ALREADY_CLAIMED",
+      });
+    }
+
+    if (character.claimed_by_user_id !== member.user_id) {
+      await characters.update(character.id, {
+        claimedByUserId: member.user_id,
+      });
+    }
+
     const updated = await members.updateStatus(member.id, "active");
+    await pendingActions.deleteByMemberId(member.id);
 
     return c.json(
       {
@@ -1107,6 +1725,366 @@ organizationsRouter.openapi(approveOrganizationMemberRoute, async (c) => {
   }
 });
 
+organizationsRouter.openapi(rejectOrganizationMemberRoute, async (c) => {
+  const params = rejectOrganizationMemberRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = getRouteSession(c);
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+    const members = new OrganizationMembersRepository(db);
+    const characters = new CharactersRepository(db);
+    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
+
+    const member = await members.findById(params.data.memberId);
+    if (!member || member.organization_id !== organization.id) {
+      throw new NotFoundError("Organization membership not found");
+    }
+
+    if (member.status !== "pending") {
+      throw new ConflictError("Membership is not pending approval", {
+        code: "ORGANIZATION_MEMBER_NOT_PENDING",
+      });
+    }
+
+    const pendingAction = await pendingActions.findByMemberId(member.id);
+    if (!pendingAction) {
+      throw new ConflictError("Pending membership details were not found", {
+        code: "ORGANIZATION_MEMBER_PENDING_DETAILS_MISSING",
+      });
+    }
+
+    if (pendingAction.character_id && pendingAction.requested_character_name) {
+      await characters.delete(pendingAction.character_id, {
+        deletedByUserId: session.user.id,
+      });
+    }
+
+    await pendingActions.deleteByMemberId(member.id);
+    const updated = await members.softRemove(member.id);
+
+    return c.json(
+      {
+        member: toOrganizationMemberResponse(updated),
+        message: "Pending membership rejected successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(appointOrganizationAdminRoute, async (c) => {
+  const params = appointOrganizationAdminRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = getRouteSession(c);
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+    const members = new OrganizationMembersRepository(db);
+
+    const member = await members.findById(params.data.memberId);
+    if (!member || member.organization_id !== organization.id) {
+      throw new NotFoundError("Organization membership not found");
+    }
+
+    if (member.status !== "active") {
+      throw new ConflictError("Only active members can be promoted to admin", {
+        code: "ORGANIZATION_MEMBER_NOT_ACTIVE",
+      });
+    }
+
+    if (member.role === "owner") {
+      throw new ConflictError("Organization owner is already the highest role", {
+        code: "ORGANIZATION_OWNER_ROLE_IMMUTABLE",
+      });
+    }
+
+    if (member.role === "admin") {
+      throw new ConflictError("Member is already an admin", {
+        code: "ORGANIZATION_MEMBER_ALREADY_ADMIN",
+      });
+    }
+
+    const updated = await members.updateRole(member.id, "admin");
+
+    return c.json(
+      {
+        member: toOrganizationMemberResponse(updated),
+        message:
+          member.user_id === session.user.id
+            ? "Your organization admin role was updated successfully."
+            : "Organization admin appointed successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(removeOrganizationAdminRoute, async (c) => {
+  const params = removeOrganizationAdminRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+    const members = new OrganizationMembersRepository(db);
+
+    const member = await members.findById(params.data.memberId);
+    if (!member || member.organization_id !== organization.id) {
+      throw new NotFoundError("Organization membership not found");
+    }
+
+    if (member.status !== "active") {
+      throw new ConflictError("Only active admins can be removed", {
+        code: "ORGANIZATION_MEMBER_NOT_ACTIVE",
+      });
+    }
+
+    if (member.role === "owner") {
+      throw new ConflictError("Organization owner cannot be demoted", {
+        code: "ORGANIZATION_OWNER_ROLE_IMMUTABLE",
+      });
+    }
+
+    if (member.role !== "admin") {
+      throw new ConflictError("Member is not an admin", {
+        code: "ORGANIZATION_MEMBER_NOT_ADMIN",
+      });
+    }
+
+    const updated = await members.updateRole(member.id, "member");
+
+    return c.json(
+      {
+        member: toOrganizationMemberResponse(updated),
+        message: "Organization admin removed successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(acceptOrganizationInviteRoute, async (c) => {
+  const params = acceptOrganizationInviteRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const members = new OrganizationMembersRepository(db);
+    const characters = new CharactersRepository(db);
+    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
+
+    const member = await members.findById(params.data.memberId);
+    if (!member || member.organization_id !== organization.id) {
+      throw new NotFoundError("Organization membership not found");
+    }
+
+    if (member.user_id !== session.user.id) {
+      throw new ForbiddenError("You are not allowed to accept this invitation", {
+        code: "ORGANIZATION_INVITE_ACCEPT_FORBIDDEN",
+      });
+    }
+
+    if (member.status !== "pending") {
+      throw new ConflictError("Invitation is not pending", {
+        code: "ORGANIZATION_MEMBER_NOT_PENDING",
+      });
+    }
+
+    const pendingAction = await pendingActions.findByMemberId(member.id);
+    if (!pendingAction || pendingAction.kind !== "invite" || !pendingAction.character_id) {
+      throw new ConflictError("Invitation details were not found", {
+        code: "ORGANIZATION_INVITE_DETAILS_MISSING",
+      });
+    }
+
+    const existingCharacterClaims = await characters.listByOrganizationAndUser(
+      organization.id,
+      session.user.id,
+    );
+    if (existingCharacterClaims.length > 0) {
+      throw new ConflictError(
+        "You already have a claimed character in this organization",
+        {
+          code: "USER_ALREADY_HAS_ORGANIZATION_CHARACTER",
+        },
+      );
+    }
+
+    const character = await characters.findById(pendingAction.character_id);
+    if (!character || character.organization_id !== organization.id) {
+      throw new ConflictError("Invitation character is no longer available", {
+        code: "ORGANIZATION_INVITE_DETAILS_MISSING",
+      });
+    }
+
+    if (
+      character.claimed_by_user_id !== null &&
+      character.claimed_by_user_id !== session.user.id
+    ) {
+      throw new ConflictError("Invitation character is already claimed", {
+        code: "CHARACTER_ALREADY_CLAIMED",
+      });
+    }
+
+    if (character.claimed_by_user_id !== session.user.id) {
+      await characters.update(character.id, {
+        claimedByUserId: session.user.id,
+      });
+    }
+
+    const updated = await members.updateStatus(member.id, "active");
+    await pendingActions.deleteByMemberId(member.id);
+
+    return c.json(
+      {
+        member: toOrganizationWorkflowMemberResponse(updated),
+        message: "Invitation accepted successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(declineOrganizationInviteRoute, async (c) => {
+  const params = declineOrganizationInviteRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const members = new OrganizationMembersRepository(db);
+    const characters = new CharactersRepository(db);
+    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
+
+    const member = await members.findById(params.data.memberId);
+    if (!member || member.organization_id !== organization.id) {
+      throw new NotFoundError("Organization membership not found");
+    }
+
+    if (member.user_id !== session.user.id) {
+      throw new ForbiddenError("You are not allowed to decline this invitation", {
+        code: "ORGANIZATION_INVITE_DECLINE_FORBIDDEN",
+      });
+    }
+
+    if (member.status !== "pending") {
+      throw new ConflictError("Invitation is not pending", {
+        code: "ORGANIZATION_MEMBER_NOT_PENDING",
+      });
+    }
+
+    const pendingAction = await pendingActions.findByMemberId(member.id);
+    if (!pendingAction || pendingAction.kind !== "invite") {
+      throw new ConflictError("Invitation details were not found", {
+        code: "ORGANIZATION_INVITE_DETAILS_MISSING",
+      });
+    }
+
+    if (pendingAction.character_id && pendingAction.requested_character_name) {
+      await characters.delete(pendingAction.character_id, {
+        deletedByUserId: session.user.id,
+      });
+    }
+
+    await pendingActions.deleteByMemberId(member.id);
+    const updated = await members.softRemove(member.id);
+
+    return c.json(
+      {
+        member: toOrganizationMemberResponse(updated),
+        message: "Invitation declined successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
 organizationsRouter.openapi(deleteOrganizationRoute, async (c) => {
   const parsed = deleteOrganizationRoute.request.params.safeParse(c.req.param());
 
@@ -1122,11 +2100,10 @@ organizationsRouter.openapi(deleteOrganizationRoute, async (c) => {
     const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
-    const organization = await organizations.findById(parsed.data.id);
-
-    if (!organization) {
-      throw new NotFoundError("Organization not found");
-    }
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      parsed.data.organization,
+    );
 
     if (organization.created_by_user_id !== session.user.id) {
       throw new ForbiddenError("Only the organization creator can delete it", {
@@ -1180,11 +2157,10 @@ organizationsRouter.openapi(updateOrganizationRoute, async (c) => {
     const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
-    const organization = await organizations.findById(params.data.id);
-
-    if (!organization) {
-      throw new NotFoundError("Organization not found");
-    }
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
 
     if (organization.created_by_user_id !== session.user.id) {
       throw new ForbiddenError("Only the organization creator can update it", {

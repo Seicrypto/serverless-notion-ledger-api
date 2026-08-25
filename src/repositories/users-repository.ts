@@ -3,8 +3,17 @@ import type {
   CreateUserInput,
   UpdateUserInput,
   UserRecord,
+  UserStatus,
 } from "./types";
 import { nowIso } from "./utils";
+
+export interface ListUsersByStatusInput {
+  displayName?: string;
+  email?: string;
+  limit: number;
+  offset: number;
+  status: UserStatus;
+}
 
 export class UsersRepository {
   constructor(private readonly db: DatabaseClient) {}
@@ -61,6 +70,33 @@ export class UsersRepository {
 
   async list(): Promise<UserRecord[]> {
     return this.db.all<UserRecord>(`SELECT * FROM users ORDER BY id ASC`);
+  }
+
+  async listByStatus(input: ListUsersByStatusInput): Promise<UserRecord[]> {
+    const bindings: Array<number | string> = [input.status];
+    const whereClauses = [`status = ?`];
+
+    if (input.email) {
+      whereClauses.push(`email = ?`);
+      bindings.push(input.email);
+    }
+
+    if (input.displayName) {
+      whereClauses.push(`display_name LIKE ?`);
+      bindings.push(`%${input.displayName}%`);
+    }
+
+    bindings.push(input.limit, input.offset);
+
+    return this.db.all<UserRecord>(
+      `SELECT *
+       FROM users
+       WHERE ${whereClauses.join(" AND ")}
+       ORDER BY id ASC
+       LIMIT ?
+       OFFSET ?`,
+      ...bindings,
+    );
   }
 
   async setPasswordHash(id: number, passwordHash: string): Promise<UserRecord> {
