@@ -25,6 +25,12 @@ async function main() {
       "games",
       "organization_games",
       "game_aliases",
+      "assets",
+      "events",
+      "event_participants",
+      "settlements",
+      "settlement_allocations",
+      "settlement_claims",
     ]) {
       assert.ok(tableNames.has(requiredTable), `Missing table: ${requiredTable}`);
     }
@@ -43,6 +49,35 @@ async function main() {
       "game_id",
       "deleted_at",
       "deleted_by_user_id",
+    ]);
+    await assertHasColumns(db, "assets", [
+      "asset_key",
+      "normalized_name",
+      "canonical_asset_id",
+      "metadata_json",
+    ]);
+    await assertHasColumns(db, "events", [
+      "event_key",
+      "holder_type",
+      "holder_ref",
+      "source_type",
+    ]);
+    await assertHasColumns(db, "settlements", [
+      "settlement_key",
+      "fee_mode",
+      "fee_rule_key",
+      "allocation_mode",
+    ]);
+    await assertHasColumns(db, "settlement_allocations", [
+      "weight",
+      "ratio",
+      "amount",
+      "status",
+    ]);
+    await assertHasColumns(db, "settlement_claims", [
+      "settlement_allocation_id",
+      "claimed_by_character_id",
+      "method",
     ]);
 
     const spiritVale = await db.first<{
