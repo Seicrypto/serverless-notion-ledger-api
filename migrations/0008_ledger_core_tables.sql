@@ -224,16 +224,23 @@ CREATE TABLE settlement_claims (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   settlement_allocation_id INTEGER NOT NULL,
   claimed_by_character_id INTEGER,
-  confirmed_by_user_id INTEGER,
   claimed_at TEXT NOT NULL,
   amount INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'recorded'
+    CHECK (status IN ('recorded', 'confirmed', 'voided')),
   method TEXT NOT NULL DEFAULT 'manual'
     CHECK (method IN ('manual', 'in_game_mail', 'trade', 'bank', 'other')),
+  confirmed_at TEXT,
+  confirmed_by_user_id INTEGER,
+  voided_at TEXT,
+  voided_by_user_id INTEGER,
   notes TEXT,
   created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
   FOREIGN KEY (settlement_allocation_id) REFERENCES settlement_allocations(id) ON DELETE CASCADE,
   FOREIGN KEY (claimed_by_character_id) REFERENCES characters(id) ON DELETE SET NULL,
-  FOREIGN KEY (confirmed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (confirmed_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (voided_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) STRICT;
 
 CREATE INDEX idx_settlement_claims_allocation_id

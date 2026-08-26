@@ -32,6 +32,11 @@ jobs:
         continue-on-error: true
         run: npm run test:repositories
 
+      - name: Run ledger tests
+        id: test_ledger
+        continue-on-error: true
+        run: npm run test:ledger
+
       - name: Summarize CI results
         if: always()
         run: |
@@ -52,6 +57,13 @@ jobs:
             failures=1
           else
             echo "- \`npm run test:repositories\` passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "${{ steps.test_ledger.outcome }}" != "success" ]; then
+            echo "- \`npm run test:ledger\` failed" >> "$GITHUB_STEP_SUMMARY"
+            failures=1
+          else
+            echo "- \`npm run test:ledger\` passed" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           if [ "$failures" -ne 0 ]; then

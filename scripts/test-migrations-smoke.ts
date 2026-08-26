@@ -77,6 +77,9 @@ async function main() {
     await assertHasColumns(db, "settlement_claims", [
       "settlement_allocation_id",
       "claimed_by_character_id",
+      "status",
+      "confirmed_at",
+      "voided_at",
       "method",
     ]);
 
