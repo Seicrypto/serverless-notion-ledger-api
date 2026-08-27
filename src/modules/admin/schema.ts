@@ -31,6 +31,22 @@ const managedUserResponseSchema = z
   })
   .openapi("ManagedUserResponse");
 
+const managedOrganizationSchema = z
+  .object({
+    id: z.number().int().positive(),
+    name: z.string(),
+    slug: z.string(),
+    vanity: z.string().nullable(),
+  })
+  .openapi("ManagedOrganization");
+
+const managedOrganizationResponseSchema = z
+  .object({
+    message: z.string(),
+    organization: managedOrganizationSchema,
+  })
+  .openapi("ManagedOrganizationResponse");
+
 const pendingUsersResponseSchema = z
   .object({
     users: z.array(managedUserSchema),
@@ -58,6 +74,23 @@ const userIdParamSchema = z
     id: z.coerce.number().int().positive(),
   })
   .openapi("AdminUserIdParam");
+
+const organizationIdentifierParamSchema = z
+  .object({
+    organization: z.string().trim().min(1).max(120),
+  })
+  .openapi("AdminOrganizationIdentifierParam");
+
+const updateOrganizationVanityRequestSchema = z
+  .object({
+    vanity: z
+      .string()
+      .trim()
+      .min(3)
+      .max(64)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  })
+  .openapi("UpdateOrganizationVanityRequest");
 
 export const listPendingUsersRoute = createRoute({
   method: "get",
@@ -106,6 +139,53 @@ export const listDisabledUsersRoute = createRoute({
     403: {
       content: { "application/json": { schema: errorSchema } },
       description: "Admin access required.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const updateOrganizationVanityRoute = createRoute({
+  method: "patch",
+  path: "/organizations/{organization}/vanity",
+  tags: ["Admin"],
+  request: {
+    params: organizationIdentifierParamSchema,
+    body: {
+      content: {
+        "application/json": {
+          schema: updateOrganizationVanityRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: managedOrganizationResponseSchema,
+        },
+      },
+      description: "Organization vanity updated successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Official staff access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization vanity already exists.",
     },
     422: {
       content: { "application/json": { schema: validationErrorSchema } },

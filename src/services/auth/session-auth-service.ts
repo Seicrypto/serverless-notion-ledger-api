@@ -60,4 +60,14 @@ export class SessionAuthService {
 
     return session;
   }
+
+  async requireOfficialStaff(token?: string): Promise<AuthenticatedSession> {
+    const session = await this.requireActiveUser(token);
+
+    if (!session.staff) {
+      throw new ForbiddenError("Official staff access is required");
+    }
+
+    return session;
+  }
 }

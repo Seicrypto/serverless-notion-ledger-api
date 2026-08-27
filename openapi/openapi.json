@@ -522,6 +522,62 @@
           "offset"
         ]
       },
+      "ManagedOrganizationResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "organization": {
+            "$ref": "#/components/schemas/ManagedOrganization"
+          }
+        },
+        "required": [
+          "message",
+          "organization"
+        ]
+      },
+      "ManagedOrganization": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "vanity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "vanity"
+        ]
+      },
+      "UpdateOrganizationVanityRequest": {
+        "type": "object",
+        "properties": {
+          "vanity": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "required": [
+          "vanity"
+        ]
+      },
       "ManagedUserResponse": {
         "type": "object",
         "properties": {
@@ -535,6 +591,153 @@
         "required": [
           "message",
           "user"
+        ]
+      },
+      "MergeAssetResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "sourceAsset": {
+            "$ref": "#/components/schemas/Asset"
+          },
+          "targetAsset": {
+            "$ref": "#/components/schemas/Asset"
+          }
+        },
+        "required": [
+          "message",
+          "sourceAsset",
+          "targetAsset"
+        ]
+      },
+      "Asset": {
+        "type": "object",
+        "properties": {
+          "assetKey": {
+            "type": "string"
+          },
+          "assetType": {
+            "type": "string",
+            "enum": [
+              "item",
+              "currency",
+              "ticket",
+              "reward",
+              "service",
+              "other"
+            ]
+          },
+          "canonicalAssetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "gameId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "isDefaultSettlementUnit": {
+            "type": "boolean"
+          },
+          "mergedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadataJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "normalizedName": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "rarityLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "organization"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "org_verified",
+              "active",
+              "merged",
+              "deprecated"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetKey",
+          "assetType",
+          "canonicalAssetId",
+          "createdAt",
+          "gameId",
+          "iconUrl",
+          "id",
+          "isDefaultSettlementUnit",
+          "mergedAt",
+          "metadataJson",
+          "name",
+          "normalizedName",
+          "organizationId",
+          "rarityLabel",
+          "scope",
+          "status",
+          "updatedAt"
+        ]
+      },
+      "MergeAssetRequest": {
+        "type": "object",
+        "properties": {
+          "targetAssetId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "targetAssetId"
         ]
       },
       "GameListResponse": {
@@ -1714,6 +1917,1040 @@
         "required": [
           "message"
         ]
+      },
+      "CreateAssetResponse": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/Asset"
+          },
+          "message": {
+            "type": "string"
+          },
+          "primaryAlias": {
+            "$ref": "#/components/schemas/AssetAlias"
+          }
+        },
+        "required": [
+          "asset",
+          "message",
+          "primaryAlias"
+        ]
+      },
+      "AssetAlias": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "aliasType": {
+            "type": "string",
+            "enum": [
+              "official",
+              "localized",
+              "community",
+              "nickname",
+              "legacy"
+            ]
+          },
+          "assetId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "normalizedAlias": {
+            "type": "string"
+          },
+          "regionCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "alias",
+          "aliasType",
+          "assetId",
+          "id",
+          "isPrimary",
+          "locale",
+          "normalizedAlias",
+          "regionCode"
+        ]
+      },
+      "CreateAssetConflictResponse": {
+        "type": "object",
+        "properties": {
+          "duplicate": {
+            "type": "object",
+            "properties": {
+              "exactMatch": {
+                "$ref": "#/components/schemas/AssetDuplicateCandidate"
+              },
+              "normalizedName": {
+                "type": "string"
+              },
+              "possibleMatches": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AssetDuplicateCandidate"
+                }
+              },
+              "recommendedAction": {
+                "type": "string",
+                "enum": [
+                  "use_existing",
+                  "confirm_create",
+                  "allow_create"
+                ]
+              }
+            },
+            "required": [
+              "exactMatch",
+              "normalizedName",
+              "possibleMatches",
+              "recommendedAction"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "duplicate",
+          "message"
+        ]
+      },
+      "AssetDuplicateCandidate": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/AssetAlias"
+          },
+          "asset": {
+            "$ref": "#/components/schemas/Asset"
+          },
+          "matchedBy": {
+            "type": "string",
+            "enum": [
+              "canonical_exact",
+              "alias_exact",
+              "possible"
+            ]
+          }
+        },
+        "required": [
+          "alias",
+          "asset",
+          "matchedBy"
+        ]
+      },
+      "CreateAssetOperationalConflictResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "INTERNAL_SERVER_ERROR"
+          },
+          "error": {
+            "type": "string",
+            "example": "Internal Server Error"
+          },
+          "requestId": {
+            "type": "string",
+            "example": "6d7c5b45f4ae4c01"
+          }
+        },
+        "required": [
+          "code",
+          "error",
+          "requestId"
+        ]
+      },
+      "CreateAssetRequest": {
+        "type": "object",
+        "properties": {
+          "assetType": {
+            "type": "string",
+            "enum": [
+              "item",
+              "currency",
+              "ticket",
+              "reward",
+              "service",
+              "other"
+            ]
+          },
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "metadataJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "rarityLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "LedgerEventResponse": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/LedgerEvent"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "message"
+        ]
+      },
+      "LedgerEvent": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdByUserId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "eventKey": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": [
+              "loot",
+              "raid",
+              "activity",
+              "bonus",
+              "salary",
+              "guild_event",
+              "other"
+            ]
+          },
+          "gameId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "holderRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "holderType": {
+            "type": "string",
+            "enum": [
+              "character",
+              "org_treasury",
+              "market",
+              "external",
+              "custom"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "occurredAt": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "api",
+              "import"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "ready_for_settlement",
+              "partially_settled",
+              "settled",
+              "cancelled"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "createdAt",
+          "createdByUserId",
+          "eventKey",
+          "eventType",
+          "gameId",
+          "holderRef",
+          "holderType",
+          "id",
+          "notes",
+          "occurredAt",
+          "organizationId",
+          "sourceType",
+          "status",
+          "title",
+          "updatedAt"
+        ]
+      },
+      "CreateLedgerEventRequest": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "eventType": {
+            "type": "string",
+            "enum": [
+              "loot",
+              "raid",
+              "activity",
+              "bonus",
+              "salary",
+              "guild_event",
+              "other"
+            ]
+          },
+          "gameId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "holderRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "holderType": {
+            "type": "string",
+            "enum": [
+              "character",
+              "org_treasury",
+              "market",
+              "external",
+              "custom"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "api",
+              "import"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "occurredAt",
+          "title"
+        ]
+      },
+      "UpdateLedgerEventStatusRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready_for_settlement",
+              "cancelled"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "LedgerSettlementResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "settlement": {
+            "$ref": "#/components/schemas/LedgerSettlement"
+          }
+        },
+        "required": [
+          "message",
+          "settlement"
+        ]
+      },
+      "LedgerSettlement": {
+        "type": "object",
+        "properties": {
+          "allocationMode": {
+            "type": "string",
+            "enum": [
+              "equal",
+              "weight",
+              "manual"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdByUserId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "decidedAt": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "feeAmount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "feeMode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "percent",
+              "fixed",
+              "rule"
+            ]
+          },
+          "feePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "feeRuleKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grossAmount": {
+            "type": "number"
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "netAmount": {
+            "type": "number"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organizationId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "payerRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payerType": {
+            "type": "string",
+            "enum": [
+              "character",
+              "org_treasury",
+              "external",
+              "custom"
+            ]
+          },
+          "settlementKey": {
+            "type": "string"
+          },
+          "settlementType": {
+            "type": "string",
+            "enum": [
+              "sale",
+              "bonus",
+              "salary",
+              "reward",
+              "subsidy",
+              "adjustment"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "calculated",
+              "paying",
+              "paid",
+              "cancelled"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "unitAssetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "allocationMode",
+          "createdAt",
+          "createdByUserId",
+          "decidedAt",
+          "eventId",
+          "feeAmount",
+          "feeMode",
+          "feePercent",
+          "feeRuleKey",
+          "grossAmount",
+          "id",
+          "netAmount",
+          "notes",
+          "organizationId",
+          "payerRef",
+          "payerType",
+          "settlementKey",
+          "settlementType",
+          "status",
+          "title",
+          "unitAssetId",
+          "updatedAt"
+        ]
+      },
+      "CreateLedgerSettlementRequest": {
+        "type": "object",
+        "properties": {
+          "allocationMode": {
+            "type": "string",
+            "enum": [
+              "equal",
+              "weight",
+              "manual"
+            ]
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "eventId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "feeAmount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "feeMode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "percent",
+              "fixed",
+              "rule"
+            ]
+          },
+          "feePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "feeRuleKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "grossAmount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "netAmount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "payerRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "payerType": {
+            "type": "string",
+            "enum": [
+              "character",
+              "org_treasury",
+              "external",
+              "custom"
+            ]
+          },
+          "settlementType": {
+            "type": "string",
+            "enum": [
+              "sale",
+              "bonus",
+              "salary",
+              "reward",
+              "subsidy",
+              "adjustment"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "unitAssetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "decidedAt",
+          "grossAmount",
+          "netAmount",
+          "title"
+        ]
+      },
+      "UpdateLedgerSettlementStatusRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "calculated",
+              "paying",
+              "paid",
+              "cancelled"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "LedgerAllocationResponse": {
+        "type": "object",
+        "properties": {
+          "allocation": {
+            "$ref": "#/components/schemas/LedgerSettlementAllocation"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "allocation",
+          "message"
+        ]
+      },
+      "LedgerSettlementAllocation": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "characterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "ratio": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "settlementId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "claimed",
+              "waived",
+              "cancelled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "amount",
+          "characterId",
+          "createdAt",
+          "id",
+          "ratio",
+          "settlementId",
+          "status",
+          "updatedAt",
+          "weight"
+        ]
+      },
+      "CreateLedgerAllocationRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "characterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "settlementId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "weight": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "amount",
+          "settlementId"
+        ]
+      },
+      "UpdateLedgerAllocationStatusRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "waived",
+              "cancelled"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "LedgerClaimResponse": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "$ref": "#/components/schemas/LedgerSettlementClaim"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim",
+          "message"
+        ]
+      },
+      "LedgerSettlementClaim": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "claimedAt": {
+            "type": "string"
+          },
+          "claimedByCharacterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "confirmedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confirmedByUserId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "in_game_mail",
+              "trade",
+              "bank",
+              "other"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settlementAllocationId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "recorded",
+              "confirmed",
+              "voided"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "voidedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "voidedByUserId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "amount",
+          "claimedAt",
+          "claimedByCharacterId",
+          "confirmedAt",
+          "confirmedByUserId",
+          "createdAt",
+          "id",
+          "method",
+          "notes",
+          "settlementAllocationId",
+          "status",
+          "updatedAt",
+          "voidedAt",
+          "voidedByUserId"
+        ]
+      },
+      "CreateLedgerClaimRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "claimedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "claimedByCharacterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "in_game_mail",
+              "trade",
+              "bank",
+              "other"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "settlementAllocationId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "amount",
+          "claimedAt",
+          "settlementAllocationId"
+        ]
+      },
+      "UpdateLedgerClaimStatusRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "voided"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
       }
     },
     "parameters": {}
@@ -2338,6 +3575,97 @@
         }
       }
     },
+    "/admin/organizations/{organization}/vanity": {
+      "patch": {
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganizationVanityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Organization vanity updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedOrganizationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Official staff access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Organization vanity already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/users/{id}/approve": {
       "post": {
         "tags": [
@@ -2557,6 +3885,107 @@
           },
           "404": {
             "description": "User not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/assets/{assetId}/merge": {
+      "post": {
+        "tags": [
+          "Assets",
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "assetId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeAssetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merge one asset into another canonical asset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeAssetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid merge request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Official admin access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Asset not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Merge conflict.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4348,6 +5777,867 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/assets": {
+      "post": {
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Create an organization-scoped asset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateAssetResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization membership required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization or game not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate asset detected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreateAssetConflictResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CreateAssetOperationalConflictResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/events": {
+      "post": {
+        "tags": [
+          "Ledger",
+          "Events"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLedgerEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Create a ledger event.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerEventResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization membership required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization or related record not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/events/{eventId}/status": {
+      "patch": {
+        "tags": [
+          "Ledger",
+          "Events"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "eventId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLedgerEventStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Update a ledger event status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerEventResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Event not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/settlements": {
+      "post": {
+        "tags": [
+          "Ledger",
+          "Settlements"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLedgerSettlementRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Create a draft settlement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerSettlementResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Related record not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/settlements/{settlementId}/status": {
+      "patch": {
+        "tags": [
+          "Ledger",
+          "Settlements"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "settlementId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLedgerSettlementStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Update a settlement status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerSettlementResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Settlement not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/allocations": {
+      "post": {
+        "tags": [
+          "Ledger",
+          "Allocations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLedgerAllocationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Create a settlement allocation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerAllocationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Settlement or character not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/allocations/{allocationId}/status": {
+      "patch": {
+        "tags": [
+          "Ledger",
+          "Allocations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "allocationId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLedgerAllocationStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Update an allocation status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerAllocationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Allocation not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/claims": {
+      "post": {
+        "tags": [
+          "Ledger",
+          "Claims"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLedgerClaimRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Record a settlement claim.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerClaimResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization membership required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Allocation or character not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/claims/{claimId}/status": {
+      "patch": {
+        "tags": [
+          "Ledger",
+          "Claims"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "claimId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLedgerClaimStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Update a claim status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerClaimResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Claim not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
                 }
               }
             }
