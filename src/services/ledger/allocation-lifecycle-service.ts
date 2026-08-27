@@ -4,6 +4,7 @@ import { SettlementAllocationsRepository } from "../../repositories/settlement-a
 import { SettlementsRepository } from "../../repositories/settlements-repository";
 import type {
   CreateSettlementAllocationInput,
+  SettlementAllocationStatus,
   SettlementAllocationRecord,
   SettlementRecord,
 } from "../../repositories/types";
@@ -81,6 +82,30 @@ export class AllocationLifecycleService implements AllocationLifecyclePort {
     );
 
     return updated;
+  }
+
+  async transitionStatus(
+    allocationId: number,
+    nextStatus: SettlementAllocationStatus,
+  ): Promise<SettlementAllocationRecord> {
+    switch (nextStatus) {
+      case "claimed":
+        throw new ConflictError("Claimed allocations are managed by confirmed claims", {
+          code: "ALLOCATION_STATUS_MANAGED",
+        });
+      case "waived":
+        return this.waiveAllocation(allocationId);
+      case "cancelled":
+        return this.cancelAllocation(allocationId);
+      case "pending":
+        throw new ConflictError("Allocation cannot transition back to pending directly", {
+          code: "ALLOCATION_STATUS_UNSUPPORTED",
+        });
+      default:
+        throw new ConflictError("Unsupported allocation status transition", {
+          code: "ALLOCATION_STATUS_UNSUPPORTED",
+        });
+    }
   }
 
   private async requireAllocation(

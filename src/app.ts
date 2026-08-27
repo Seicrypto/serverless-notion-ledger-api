@@ -6,7 +6,10 @@ import { assertCoreBindings } from "./lib/env";
 import { AppError, ensureRequestId, errorResponse } from "./lib/errors";
 import { authRouter } from "./modules/auth/route";
 import { adminRouter } from "./modules/admin/route";
+import { adminAssetsRouter } from "./modules/assets/admin-route";
+import { organizationAssetsRouter } from "./modules/assets/organization-route";
 import { dashboardRouter } from "./modules/dashboard/route";
+import { organizationLedgerRouter } from "./modules/ledger/route";
 import { notionRouter } from "./modules/notion/route";
 import { organizationsRouter } from "./modules/organizations/route";
 import { systemRouter } from "./modules/system/route";
@@ -83,7 +86,10 @@ export function createApp() {
   app.route("/", systemRouter);
   app.route("/auth", authRouter);
   app.route("/admin", adminRouter);
+  app.route("/admin", adminAssetsRouter);
   app.route("/organizations", organizationsRouter);
+  app.route("/organizations", organizationAssetsRouter);
+  app.route("/organizations", organizationLedgerRouter);
   app.route("/dashboard", dashboardRouter);
   app.route("/notion", notionRouter);
 

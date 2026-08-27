@@ -4,25 +4,44 @@ import type {
   CreateSettlementClaimInput,
   CreateSettlementInput,
   EventRecord,
+  EventStatus,
+  SettlementAllocationStatus,
   SettlementAllocationRecord,
   SettlementClaimRecord,
+  SettlementClaimStatus,
   SettlementRecord,
+  SettlementStatus,
 } from "../../repositories/types";
 
+export interface CreateManagedEventInput
+  extends Omit<CreateEventInput, "eventKey"> {
+  eventKey?: string;
+}
+
+export interface CreateManagedSettlementInput
+  extends Omit<CreateSettlementInput, "settlementKey"> {
+  settlementKey?: string;
+}
+
 export interface EventLifecyclePort {
-  createEvent(input: CreateEventInput): Promise<EventRecord>;
+  createEvent(input: CreateManagedEventInput): Promise<EventRecord>;
   cancelEvent(eventId: number): Promise<EventRecord>;
   markReadyForSettlement(eventId: number): Promise<EventRecord>;
   syncStatusFromSettlements(eventId: number): Promise<EventRecord>;
+  transitionStatus(eventId: number, nextStatus: EventStatus): Promise<EventRecord>;
 }
 
 export interface SettlementLifecyclePort {
   cancelSettlement(settlementId: number): Promise<SettlementRecord>;
-  createDraftSettlement(input: CreateSettlementInput): Promise<SettlementRecord>;
+  createDraftSettlement(input: CreateManagedSettlementInput): Promise<SettlementRecord>;
   markCalculated(settlementId: number): Promise<SettlementRecord>;
   markPaid(settlementId: number): Promise<SettlementRecord>;
   startPaying(settlementId: number): Promise<SettlementRecord>;
   syncStatusFromAllocations(settlementId: number): Promise<SettlementRecord>;
+  transitionStatus(
+    settlementId: number,
+    nextStatus: SettlementStatus,
+  ): Promise<SettlementRecord>;
 }
 
 export interface AllocationLifecyclePort {
@@ -32,6 +51,10 @@ export interface AllocationLifecyclePort {
   markClaimed(allocationId: number): Promise<SettlementAllocationRecord>;
   waiveAllocation(allocationId: number): Promise<SettlementAllocationRecord>;
   cancelAllocation(allocationId: number): Promise<SettlementAllocationRecord>;
+  transitionStatus(
+    allocationId: number,
+    nextStatus: SettlementAllocationStatus,
+  ): Promise<SettlementAllocationRecord>;
 }
 
 export interface ClaimLifecyclePort {
@@ -43,5 +66,10 @@ export interface ClaimLifecyclePort {
   voidClaim(
     claimId: number,
     voidedByUserId?: number | null,
+  ): Promise<SettlementClaimRecord>;
+  transitionStatus(
+    claimId: number,
+    nextStatus: SettlementClaimStatus,
+    actedByUserId?: number | null,
   ): Promise<SettlementClaimRecord>;
 }

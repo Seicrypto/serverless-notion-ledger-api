@@ -31,6 +31,8 @@ async function main() {
       "settlements",
       "settlement_allocations",
       "settlement_claims",
+      "asset_aliases",
+      "market_scopes",
     ]) {
       assert.ok(tableNames.has(requiredTable), `Missing table: ${requiredTable}`);
     }
@@ -55,6 +57,17 @@ async function main() {
       "normalized_name",
       "canonical_asset_id",
       "metadata_json",
+      "scope",
+      "is_default_settlement_unit",
+      "merged_at",
+      "merged_by_user_id",
+    ]);
+    await assertHasColumns(db, "asset_aliases", [
+      "normalized_alias",
+      "locale",
+      "region_code",
+      "alias_type",
+      "is_primary",
     ]);
     await assertHasColumns(db, "events", [
       "event_key",
@@ -62,11 +75,18 @@ async function main() {
       "holder_ref",
       "source_type",
     ]);
+    await assertHasColumns(db, "market_scopes", [
+      "scope_type",
+      "scope_key",
+      "region_code",
+      "server_code",
+    ]);
     await assertHasColumns(db, "settlements", [
       "settlement_key",
       "fee_mode",
       "fee_rule_key",
       "allocation_mode",
+      "unit_asset_id",
     ]);
     await assertHasColumns(db, "settlement_allocations", [
       "weight",

@@ -25,6 +25,7 @@ export class SettlementsRepository {
         fee_percent,
         fee_amount,
         net_amount,
+        unit_asset_id,
         payer_type,
         payer_ref,
         allocation_mode,
@@ -33,7 +34,7 @@ export class SettlementsRepository {
         created_by_user_id,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *`,
       input.organizationId,
       input.eventId ?? null,
@@ -47,6 +48,7 @@ export class SettlementsRepository {
       input.feePercent ?? null,
       input.feeAmount ?? null,
       input.netAmount,
+      input.unitAssetId ?? null,
       input.payerType ?? "character",
       input.payerRef ?? null,
       input.allocationMode ?? "equal",
@@ -104,6 +106,7 @@ export class SettlementsRepository {
            fee_percent = ?,
            fee_amount = ?,
            net_amount = ?,
+           unit_asset_id = ?,
            payer_type = ?,
            payer_ref = ?,
            allocation_mode = ?,
@@ -123,6 +126,7 @@ export class SettlementsRepository {
       input.feePercent === undefined ? existing.fee_percent : input.feePercent,
       input.feeAmount === undefined ? existing.fee_amount : input.feeAmount,
       input.netAmount ?? existing.net_amount,
+      input.unitAssetId === undefined ? existing.unit_asset_id : input.unitAssetId,
       input.payerType ?? existing.payer_type,
       input.payerRef === undefined ? existing.payer_ref : input.payerRef,
       input.allocationMode ?? existing.allocation_mode,

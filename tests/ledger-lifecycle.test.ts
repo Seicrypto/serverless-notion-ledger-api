@@ -5,8 +5,10 @@ import { ClaimLifecycleService } from "../src/services/ledger/claim-lifecycle-se
 import { EventLifecycleService } from "../src/services/ledger/event-lifecycle-service";
 import { SettlementLifecycleService } from "../src/services/ledger/settlement-lifecycle-service";
 import { ConflictError } from "../src/lib/errors";
+import { AssetsRepository } from "../src/repositories/assets-repository";
 import { CharactersRepository } from "../src/repositories/characters-repository";
 import { GamesRepository } from "../src/repositories/games-repository";
+import { OrganizationGamesRepository } from "../src/repositories/organization-games-repository";
 import { OrganizationsRepository } from "../src/repositories/organizations-repository";
 import { UsersRepository } from "../src/repositories/users-repository";
 import { createTestDatabase } from "./support/test-database";
@@ -16,6 +18,8 @@ async function createLedgerFixture() {
   const users = new UsersRepository(context.db);
   const organizations = new OrganizationsRepository(context.db);
   const games = new GamesRepository(context.db);
+  const organizationGames = new OrganizationGamesRepository(context.db);
+  const assets = new AssetsRepository(context.db);
   const characters = new CharactersRepository(context.db);
 
   const owner = await users.create({
@@ -33,6 +37,20 @@ async function createLedgerFixture() {
   const game = await games.create({
     name: "Ledger Test Game",
     slug: "ledger-test-game",
+  });
+  await organizationGames.create({
+    gameId: game.id,
+    isPrimary: true,
+    organizationId: organization.id,
+  });
+  await assets.create({
+    assetKey: "ledger-test-game-coin",
+    assetType: "currency",
+    gameId: game.id,
+    isDefaultSettlementUnit: true,
+    name: "Coin",
+    normalizedName: "coin",
+    scope: "global",
   });
   const characterOne = await characters.create({
     claimedByUserId: owner.id,
@@ -105,6 +123,37 @@ test("settlement lifecycle requires event readiness before settlement creation",
 
     const eventAfterSettlement = await eventService.syncStatusFromSettlements(event.id);
     assert.equal(eventAfterSettlement.status, "partially_settled");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("event lifecycle can auto-assign keys and transition through route-facing statuses", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+
+    const event = await eventService.createEvent({
+      occurredAt: "2026-08-26T09:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Auto Key Event",
+    });
+
+    assert.match(event.event_key, /^evt-[a-f0-9-]+$/);
+    assert.equal(event.game_id, fixture.game.id);
+    assert.equal(event.status, "open");
+
+    const ready = await eventService.transitionStatus(
+      event.id,
+      "ready_for_settlement",
+    );
+    assert.equal(ready.status, "ready_for_settlement");
+
+    await assert.rejects(
+      () => eventService.transitionStatus(event.id, "settled"),
+      (error: unknown) =>
+        error instanceof ConflictError && error.code === "EVENT_STATUS_MANAGED",
+    );
   } finally {
     await fixture.cleanup();
   }
@@ -195,6 +244,41 @@ test("claim confirmations drive allocation, settlement, and event completion", a
   }
 });
 
+test("settlement lifecycle can auto-assign keys and default unit assets", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+
+    const event = await eventService.createEvent({
+      occurredAt: "2026-08-26T12:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Default Unit Event",
+    });
+    await eventService.markReadyForSettlement(event.id);
+
+    const settlement = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-26T13:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 1200,
+      netAmount: 1200,
+      organizationId: fixture.organization.id,
+      title: "Auto Unit Settlement",
+    });
+
+    assert.match(settlement.settlement_key, /^st-[a-f0-9-]+$/);
+    assert.ok(settlement.unit_asset_id);
+
+    const calculated = await settlementService.transitionStatus(
+      settlement.id,
+      "calculated",
+    );
+    assert.equal(calculated.status, "calculated");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("settlement cancellation is blocked once payout has started", async () => {
   const fixture = await createLedgerFixture();
   try {
@@ -246,6 +330,104 @@ test("settlement cancellation is blocked once payout has started", async () => {
         error instanceof ConflictError &&
         error.code === "INVALID_STATE_TRANSITION",
     );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("allocation lifecycle transition blocks direct claimed status and supports waive", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+    const allocationService = new AllocationLifecycleService(fixture.db);
+
+    const event = await eventService.createEvent({
+      occurredAt: "2026-08-26T19:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Allocation Transition Event",
+    });
+    await eventService.markReadyForSettlement(event.id);
+
+    const settlement = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-26T20:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 1000,
+      netAmount: 1000,
+      organizationId: fixture.organization.id,
+      title: "Allocation Transition Settlement",
+    });
+
+    const allocation = await allocationService.createPendingAllocation({
+      amount: 1000,
+      characterId: fixture.characterOne.id,
+      settlementId: settlement.id,
+    });
+
+    await assert.rejects(
+      () => allocationService.transitionStatus(allocation.id, "claimed"),
+      (error: unknown) =>
+        error instanceof ConflictError && error.code === "ALLOCATION_STATUS_MANAGED",
+    );
+
+    const waived = await allocationService.transitionStatus(allocation.id, "waived");
+    assert.equal(waived.status, "waived");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("claim lifecycle transition supports confirm and void workflows", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+    const allocationService = new AllocationLifecycleService(fixture.db);
+    const claimService = new ClaimLifecycleService(fixture.db);
+
+    const event = await eventService.createEvent({
+      occurredAt: "2026-08-26T21:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Claim Transition Event",
+    });
+    await eventService.markReadyForSettlement(event.id);
+
+    const settlement = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-26T22:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 2000,
+      netAmount: 2000,
+      organizationId: fixture.organization.id,
+      title: "Claim Transition Settlement",
+    });
+    await settlementService.markCalculated(settlement.id);
+
+    const allocation = await allocationService.createPendingAllocation({
+      amount: 2000,
+      characterId: fixture.characterOne.id,
+      settlementId: settlement.id,
+    });
+
+    const claim = await claimService.recordClaim({
+      amount: 2000,
+      claimedAt: "2026-08-26T22:10:00.000Z",
+      claimedByCharacterId: fixture.characterOne.id,
+      settlementAllocationId: allocation.id,
+    });
+
+    const confirmed = await claimService.transitionStatus(
+      claim.id,
+      "confirmed",
+      fixture.owner.id,
+    );
+    assert.equal(confirmed.status, "confirmed");
+
+    const voided = await claimService.transitionStatus(
+      claim.id,
+      "voided",
+      fixture.owner.id,
+    );
+    assert.equal(voided.status, "voided");
   } finally {
     await fixture.cleanup();
   }

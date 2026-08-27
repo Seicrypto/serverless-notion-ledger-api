@@ -27,7 +27,14 @@ export type AssetType =
   | "reward"
   | "service"
   | "other";
+export type AssetScope = "global" | "organization";
 export type AssetStatus = "active" | "merged" | "deprecated";
+export type AssetAliasType =
+  | "official"
+  | "localized"
+  | "community"
+  | "nickname"
+  | "legacy";
 export type EventType =
   | "loot"
   | "raid"
@@ -81,6 +88,7 @@ export type SettlementClaimMethod =
   | "bank"
   | "other";
 export type SettlementClaimStatus = "recorded" | "confirmed" | "voided";
+export type MarketScopeType = "global" | "region" | "server" | "cluster";
 
 export interface UserRecord {
   created_at: string;
@@ -319,30 +327,38 @@ export interface CreateOfficialStaffInput {
 
 export interface AssetRecord {
   asset_key: string;
-  asset_type: AssetType;
-  canonical_asset_id: number | null;
   created_at: string;
   created_by_user_id: number | null;
   game_id: number;
   icon_url: string | null;
   id: number;
+  is_default_settlement_unit: number;
+  merged_at: string | null;
+  merged_by_user_id: number | null;
   metadata_json: string | null;
   name: string;
   normalized_name: string;
   organization_id: number | null;
   rarity_label: string | null;
+  scope: AssetScope;
+  asset_type: AssetType;
+  canonical_asset_id: number | null;
   status: AssetStatus;
   updated_at: string;
 }
 
 export interface CreateAssetInput {
   assetKey: string;
+  scope?: AssetScope;
   assetType?: AssetType;
   canonicalAssetId?: number | null;
   createdByUserId?: number | null;
   gameId: number;
   iconUrl?: string | null;
+  isDefaultSettlementUnit?: boolean;
   metadataJson?: string | null;
+  mergedAt?: string | null;
+  mergedByUserId?: number | null;
   name: string;
   normalizedName: string;
   organizationId?: number | null;
@@ -352,11 +368,15 @@ export interface CreateAssetInput {
 
 export interface UpdateAssetInput {
   assetKey?: string;
+  scope?: AssetScope;
   assetType?: AssetType;
   canonicalAssetId?: number | null;
   gameId?: number;
   iconUrl?: string | null;
+  isDefaultSettlementUnit?: boolean;
   metadataJson?: string | null;
+  mergedAt?: string | null;
+  mergedByUserId?: number | null;
   name?: string;
   normalizedName?: string;
   organizationId?: number | null;
@@ -463,6 +483,7 @@ export interface SettlementRecord {
   settlement_type: SettlementType;
   status: SettlementStatus;
   title: string;
+  unit_asset_id: number | null;
   updated_at: string;
 }
 
@@ -485,6 +506,7 @@ export interface CreateSettlementInput {
   settlementType?: SettlementType;
   status?: SettlementStatus;
   title: string;
+  unitAssetId?: number | null;
 }
 
 export interface UpdateSettlementInput {
@@ -504,6 +526,71 @@ export interface UpdateSettlementInput {
   settlementType?: SettlementType;
   status?: SettlementStatus;
   title?: string;
+  unitAssetId?: number | null;
+}
+
+export interface AssetAliasRecord {
+  alias: string;
+  alias_type: AssetAliasType;
+  asset_id: number;
+  created_at: string;
+  id: number;
+  is_primary: number;
+  locale: LocaleCode | null;
+  normalized_alias: string;
+  region_code: string | null;
+  updated_at: string;
+}
+
+export interface CreateAssetAliasInput {
+  alias: string;
+  aliasType?: AssetAliasType;
+  assetId: number;
+  isPrimary?: boolean;
+  locale?: LocaleCode | null;
+  normalizedAlias: string;
+  regionCode?: string | null;
+}
+
+export interface UpdateAssetAliasInput {
+  alias?: string;
+  aliasType?: AssetAliasType;
+  isPrimary?: boolean;
+  locale?: LocaleCode | null;
+  normalizedAlias?: string;
+  regionCode?: string | null;
+}
+
+export interface MarketScopeRecord {
+  created_at: string;
+  game_id: number;
+  id: number;
+  is_active: number;
+  name: string;
+  region_code: string | null;
+  scope_key: string;
+  scope_type: MarketScopeType;
+  server_code: string | null;
+  updated_at: string;
+}
+
+export interface CreateMarketScopeInput {
+  gameId: number;
+  isActive?: boolean;
+  name: string;
+  regionCode?: string | null;
+  scopeKey: string;
+  scopeType?: MarketScopeType;
+  serverCode?: string | null;
+}
+
+export interface UpdateMarketScopeInput {
+  isActive?: boolean;
+  name?: string;
+  regionCode?: string | null;
+  scopeKey?: string;
+  scopeType?: MarketScopeType;
+  serverCode?: string | null;
 }
 
 export interface SettlementAllocationRecord {

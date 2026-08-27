@@ -1,13 +1,18 @@
+import { randomUUID } from "node:crypto";
 import type { DatabaseClient } from "../../infrastructure/database/database-client";
 import { ConflictError, NotFoundError } from "../../lib/errors";
 import { SettlementAllocationsRepository } from "../../repositories/settlement-allocations-repository";
 import { SettlementsRepository } from "../../repositories/settlements-repository";
 import type {
-  CreateSettlementInput,
   SettlementAllocationRecord,
   SettlementRecord,
+  SettlementStatus,
 } from "../../repositories/types";
-import type { SettlementLifecyclePort } from "./interfaces";
+import { AssetLifecycleService } from "../assets/asset-lifecycle-service";
+import type {
+  CreateManagedSettlementInput,
+  SettlementLifecyclePort,
+} from "./interfaces";
 import { EventLifecycleService } from "./event-lifecycle-service";
 import { isTerminalAllocationStatus } from "./state-machines/shared";
 import { settlementStateMachine } from "./state-machines/settlement-state-machine";
@@ -16,13 +21,20 @@ export class SettlementLifecycleService implements SettlementLifecyclePort {
   constructor(private readonly db: DatabaseClient) {}
 
   async createDraftSettlement(
-    input: CreateSettlementInput,
+    input: CreateManagedSettlementInput,
   ): Promise<SettlementRecord> {
     const repository = new SettlementsRepository(this.db);
+    let fallbackGameId: number | null = null;
 
     if (input.eventId) {
       const eventService = new EventLifecycleService(this.db);
       const event = await eventService.syncStatusFromSettlements(input.eventId);
+      if (event.organization_id !== input.organizationId) {
+        throw new ConflictError("Settlement event does not belong to the organization", {
+          code: "SETTLEMENT_EVENT_ORGANIZATION_MISMATCH",
+        });
+      }
+      fallbackGameId = event.game_id;
 
       if (
         event.status !== "ready_for_settlement" &&
@@ -37,9 +49,19 @@ export class SettlementLifecycleService implements SettlementLifecyclePort {
       }
     }
 
+    const resolvedUnitAssetId =
+      input.unitAssetId === undefined
+        ? await this.resolveDefaultUnitAssetId({
+            gameId: fallbackGameId,
+            organizationId: input.organizationId,
+          })
+        : input.unitAssetId;
+
     const created = await repository.create({
       ...input,
+      settlementKey: input.settlementKey || `st-${randomUUID().slice(0, 12)}`,
       status: "draft",
+      unitAssetId: resolvedUnitAssetId,
     });
 
     if (created.event_id) {
@@ -49,6 +71,30 @@ export class SettlementLifecycleService implements SettlementLifecyclePort {
     }
 
     return created;
+  }
+
+  async transitionStatus(
+    settlementId: number,
+    nextStatus: SettlementStatus,
+  ): Promise<SettlementRecord> {
+    switch (nextStatus) {
+      case "calculated":
+        return this.markCalculated(settlementId);
+      case "paying":
+        return this.startPaying(settlementId);
+      case "paid":
+        return this.markPaid(settlementId);
+      case "cancelled":
+        return this.cancelSettlement(settlementId);
+      case "draft":
+        throw new ConflictError("Settlement cannot transition back to draft", {
+          code: "SETTLEMENT_STATUS_UNSUPPORTED",
+        });
+      default:
+        throw new ConflictError("Unsupported settlement status transition", {
+          code: "SETTLEMENT_STATUS_UNSUPPORTED",
+        });
+    }
   }
 
   async markCalculated(settlementId: number): Promise<SettlementRecord> {
@@ -190,5 +236,22 @@ export class SettlementLifecycleService implements SettlementLifecyclePort {
     }
 
     return settlement;
+  }
+
+  private async resolveDefaultUnitAssetId(input: {
+    gameId: number | null;
+    organizationId: number;
+  }): Promise<number | null> {
+    if (input.gameId) {
+      const asset = await new AssetLifecycleService(
+        this.db,
+      ).resolveDefaultSettlementUnit({
+        gameId: input.gameId,
+        organizationId: input.organizationId,
+      });
+      return asset?.id ?? null;
+    }
+
+    return null;
   }
 }

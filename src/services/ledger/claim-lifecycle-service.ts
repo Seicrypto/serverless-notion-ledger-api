@@ -7,6 +7,7 @@ import type {
   CreateSettlementClaimInput,
   SettlementAllocationRecord,
   SettlementClaimRecord,
+  SettlementClaimStatus,
   SettlementRecord,
 } from "../../repositories/types";
 import type { ClaimLifecyclePort } from "./interfaces";
@@ -106,6 +107,27 @@ export class ClaimLifecycleService implements ClaimLifecyclePort {
     }
 
     return updated;
+  }
+
+  async transitionStatus(
+    claimId: number,
+    nextStatus: SettlementClaimStatus,
+    actedByUserId?: number | null,
+  ): Promise<SettlementClaimRecord> {
+    switch (nextStatus) {
+      case "confirmed":
+        return this.confirmClaim(claimId, actedByUserId);
+      case "voided":
+        return this.voidClaim(claimId, actedByUserId);
+      case "recorded":
+        throw new ConflictError("Claim cannot transition back to recorded", {
+          code: "CLAIM_STATUS_UNSUPPORTED",
+        });
+      default:
+        throw new ConflictError("Unsupported claim status transition", {
+          code: "CLAIM_STATUS_UNSUPPORTED",
+        });
+    }
   }
 
   private async requireAllocation(

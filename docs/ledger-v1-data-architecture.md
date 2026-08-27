@@ -95,14 +95,116 @@ Important notes:
 - users can add assets manually
 - duplicate prevention should be advisory first, not overly strict
 - later cleanup should happen through merge workflows instead of destructive deletion
+- most assets conceptually belong to a `game`, but some assets may remain organization-local during V1
+- currency-like assets are also assets and should not be modeled as a completely separate concept
 
 Recommended responsibilities:
 
 - keep a stable `asset_key`
 - store the display name and normalized name
 - record the owning game
+- support both global and organization-local scope
 - support merge and deprecation states
 - leave room for richer metadata later
+
+Recommended V1 shape:
+
+- canonical asset identity lives in `assets`
+- language-specific names and community aliases should live in a future `asset_aliases` structure
+- market or server-specific price context should live outside the asset identity layer
+
+#### Asset Scope
+
+Although most assets are shared at the game level, V1 should still preserve room for organization-scoped assets.
+
+Recommended scope direction:
+
+- `global`
+- `organization`
+
+Typical global assets:
+
+- common item drops
+- common trade goods
+- game currencies
+- cross-organization shared item identities
+
+Typical organization-local assets:
+
+- guild reward points
+- internal attendance tokens
+- temporary local placeholders
+- organization-specific naming before a shared canonical asset is agreed on
+
+This means `organization_id` should not be interpreted as proving that the asset only exists in one guild. It is better treated as the local ownership context for a V1 asset record.
+
+#### Asset Aliases and Localization
+
+The asset table should remain the canonical identity layer.
+
+Language-specific and community-specific naming should be modeled separately in a future `asset_aliases` structure.
+
+Recommended future responsibilities for `asset_aliases`:
+
+- official names
+- localized names
+- community nicknames
+- legacy names
+- alternate spellings
+
+This helps the product support:
+
+- Chinese, English, Japanese, and other localized labels
+- different player communities calling the same asset by different names
+- duplicate checks that look beyond only the canonical name
+
+Recommended future alias properties:
+
+- `asset_id`
+- `alias`
+- `normalized_alias`
+- `locale`
+- `region_code`
+- `alias_type`
+- `is_primary`
+
+With that split:
+
+- `assets` answers "what is this asset"
+- `asset_aliases` answers "what do players call this asset"
+
+#### Asset Market Scope
+
+The asset identity layer should not directly encode all server or region pricing differences.
+
+Some games have:
+
+- one global market
+- one region per market
+- one server per market
+- multiple loosely connected clusters
+
+V1 should therefore reserve a future `market_scopes` concept instead of overloading `assets`.
+
+Recommended future `market_scopes` direction:
+
+- `global`
+- `region`
+- `server`
+- `cluster`
+
+This will later support:
+
+- per-server item prices
+- per-region price history
+- games that share names but do not share economies
+- games with a single global market without needing a special-case model
+
+With that split:
+
+- `assets` answers "what is the item or currency"
+- `market_scopes` answers "where is the economy context"
+- future pricing data answers "what was it worth there"
 
 ### `events`
 
@@ -156,6 +258,72 @@ Important notes:
 - `settlement_type` is a classification and default-behavior hint
 - it should not hide the actual financial logic
 - the actual calculation should still be determined by the stored fields
+- raw amounts alone are not enough; settlement amounts should always be interpreted with an explicit unit
+
+#### Settlement Unit
+
+V1 settlements should not rely on bare numeric amounts alone.
+
+Each settlement amount should have a unit, and that unit should be represented by an asset, usually an asset whose type is effectively a currency-like asset.
+
+Examples:
+
+- one game's gold currency
+- a guild-defined reward point
+- a barter currency such as a specific tradable orb
+- a minimum denomination unit such as copper
+
+Recommended direction:
+
+- `gross_amount` and `net_amount` remain integer values
+- `unit_asset_id` identifies what those integers mean
+
+This keeps settlement math flexible enough for:
+
+- standard in-game currency
+- multiple coexisting currencies
+- organization-local reward units
+- barter-style economies
+
+#### Default Settlement Unit
+
+Each game should be able to provide a default settlement unit for beginner-friendly workflows.
+
+Recommended V1 direction:
+
+- create at least one base currency-like asset per game
+- use that asset as the default settlement unit unless the user explicitly chooses another unit
+
+Examples:
+
+- a generic gold-like currency for a simple game
+- copper as the stored minimum unit for a gold-silver-copper economy
+- a commonly accepted trade orb for a barter-heavy economy
+
+This makes the product easier to operate while still preserving advanced flexibility.
+
+#### Multi-Denomination and Non-Standard Economies
+
+Some games do not fit a simple one-currency model.
+
+Examples:
+
+- games with gold, silver, and copper denominations
+- games where multiple tradable currencies coexist
+- games where barter items effectively act as pricing units
+- guild-defined internal reward units
+
+Recommended direction:
+
+- store amounts in integer minor units where possible
+- use the linked settlement unit asset to interpret the amount
+- keep display formatting as a separate concern from stored value
+
+This allows:
+
+- `WoW`-style storage in the smallest denomination
+- `Path of Exile`-style pricing in different tradable currencies
+- guild-local payout systems using internal units
 
 ### `settlement_allocations`
 
@@ -257,8 +425,32 @@ Recommended V1 asset strategy:
 - generate a normalized name for similarity checks
 - warn on likely duplicates instead of hard-blocking every case
 - support merge workflows later through canonical asset references
+- preserve room for organization-local assets before promoting them into shared canonical records
+- prepare for future alias-based matching instead of relying only on one canonical display name
+- avoid mixing market scope concerns directly into the asset identity row
 
 This keeps asset creation practical while preserving a path toward cleaner data over time.
+
+## Asset Module Direction
+
+The asset layer should be treated as its own business module before routing and broader application services are added.
+
+Recommended V1 module areas:
+
+- asset creation
+- duplicate detection
+- asset merge
+- canonical asset resolution
+- asset search and suggestion
+
+Recommended business goals:
+
+- let users create assets without blocking normal workflow
+- reduce accidental duplicate creation
+- preserve a safe merge path
+- keep future routes and services thin by reusing the same module boundaries
+
+This makes asset iteration safer over time because improvements to duplicate logic can stay inside the module instead of spreading across routes and feature services.
 
 ## Why Assets Still Exist in V1
 
