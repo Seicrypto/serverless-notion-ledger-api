@@ -13,6 +13,7 @@ const managedUserSchema = z
       "active",
       "disabled",
     ]),
+    vanity: z.string().nullable(),
   })
   .openapi("ManagedUser");
 
@@ -88,9 +89,26 @@ const updateOrganizationVanityRequestSchema = z
       .trim()
       .min(3)
       .max(64)
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+      .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
   })
   .openapi("UpdateOrganizationVanityRequest");
+
+const userIdentifierParamSchema = z
+  .object({
+    user: z.string().trim().min(1).max(120),
+  })
+  .openapi("AdminUserIdentifierParam");
+
+const updateUserVanityRequestSchema = z
+  .object({
+    vanity: z
+      .string()
+      .trim()
+      .min(3)
+      .max(64)
+      .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+  })
+  .openapi("UpdateUserVanityRequest");
 
 export const listPendingUsersRoute = createRoute({
   method: "get",
@@ -186,6 +204,88 @@ export const updateOrganizationVanityRoute = createRoute({
     409: {
       content: { "application/json": { schema: errorSchema } },
       description: "Organization vanity already exists.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const updateUserVanityRoute = createRoute({
+  method: "patch",
+  path: "/users/{user}/vanity",
+  tags: ["Admin"],
+  request: {
+    params: userIdentifierParamSchema,
+    body: {
+      content: {
+        "application/json": {
+          schema: updateUserVanityRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: managedUserResponseSchema,
+        },
+      },
+      description: "User vanity updated successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Official staff access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User vanity already exists.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const adminUserDetailRoute = createRoute({
+  method: "get",
+  path: "/users/{user}",
+  tags: ["Admin"],
+  request: {
+    params: userIdentifierParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: managedUserResponseSchema,
+        },
+      },
+      description: "Single user detail for official staff.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Official staff access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User not found.",
     },
     422: {
       content: { "application/json": { schema: validationErrorSchema } },

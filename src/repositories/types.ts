@@ -120,6 +120,7 @@ export interface UpdateUserInput {
   displayName?: string | null;
   emailVerifiedAt?: string | null;
   status?: UserStatus;
+  vanity?: string | null;
 }
 
 export interface OrganizationRecord {

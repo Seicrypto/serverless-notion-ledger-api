@@ -126,6 +126,33 @@ const authMeResponseSchema = z
   })
   .openapi("AuthMeResponse");
 
+const publicUserSchema = z
+  .object({
+    createdAt: z.string(),
+    displayName: z.string().nullable(),
+    id: z.number().int().positive(),
+    status: z.enum([
+      "pending_verification",
+      "pending_approval",
+      "active",
+      "disabled",
+    ]),
+    vanity: z.string().nullable(),
+  })
+  .openapi("PublicUser");
+
+const publicUserResponseSchema = z
+  .object({
+    user: publicUserSchema,
+  })
+  .openapi("PublicUserResponse");
+
+const userIdentifierParamSchema = z
+  .object({
+    user: z.string().trim().min(1).max(120),
+  })
+  .openapi("AuthUserIdentifierParam");
+
 const updateDisplayNameRequestSchema = z
   .object({
     displayName: z.string().trim().min(1).max(50),
@@ -287,6 +314,57 @@ export const authMeRoute = createRoute({
         },
       },
       description: "Authenticated account is not active.",
+    },
+  },
+});
+
+export const authUserDetailRoute = createRoute({
+  method: "get",
+  path: "/users/{user}",
+  tags: ["Auth"],
+  request: {
+    params: userIdentifierParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: publicUserResponseSchema,
+        },
+      },
+      description: "Single user public profile.",
+    },
+    401: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Authentication required.",
+    },
+    403: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Authenticated account is not active.",
+    },
+    404: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "User not found.",
+    },
+    422: {
+      content: {
+        "application/json": {
+          schema: validationErrorSchema,
+        },
+      },
+      description: "Validation failed.",
     },
   },
 });

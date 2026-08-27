@@ -12,13 +12,16 @@ import { ManageUserStatusService } from "../../services/admin/manage-user-status
 import { SessionAuthService } from "../../services/auth/session-auth-service";
 import { D1Client } from "../../infrastructure/d1/d1-client";
 import { OrganizationsRepository } from "../../repositories/organizations-repository";
+import { UsersRepository } from "../../repositories/users-repository";
 import {
+  adminUserDetailRoute,
   approveUserRoute,
   disableUserRoute,
   enableUserRoute,
   listDisabledUsersRoute,
   listPendingUsersRoute,
   updateOrganizationVanityRoute,
+  updateUserVanityRoute,
 } from "./schema";
 
 export const adminRouter = new OpenAPIHono<AppBindings>();
@@ -40,6 +43,21 @@ async function requireOrganizationByIdentifier(
   }
 
   return organization;
+}
+
+async function requireUserByIdentifier(
+  users: UsersRepository,
+  identifier: string,
+) {
+  const user = isNumericIdentifier(identifier)
+    ? await users.findById(Number(identifier))
+    : await users.findByVanity(identifier);
+
+  if (!user) {
+    throw new NotFoundError("User not found");
+  }
+
+  return user;
 }
 
 function validationErrorFromIssues(
@@ -73,6 +91,7 @@ adminRouter.openapi(listPendingUsersRoute, async (c) => {
           emailVerifiedAt: user.email_verified_at,
           id: user.id,
           status: user.status,
+          vanity: user.vanity,
         })),
       },
       200,
@@ -123,6 +142,7 @@ adminRouter.openapi(listDisabledUsersRoute, async (c) => {
           emailVerifiedAt: user.email_verified_at,
           id: user.id,
           status: user.status,
+          vanity: user.vanity,
         })),
       },
       200,
@@ -130,6 +150,50 @@ adminRouter.openapi(listDisabledUsersRoute, async (c) => {
   } catch (error) {
     if (error instanceof AppError) {
       return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403);
+    }
+
+    throw error;
+  }
+});
+
+adminRouter.openapi(adminUserDetailRoute, async (c) => {
+  const params = adminUserDetailRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    await sessionAuth.requireOfficialStaff(getSessionCookie(c));
+
+    const db = new D1Client(c.env.APP_DB);
+    const users = new UsersRepository(db);
+    const user = await requireUserByIdentifier(users, params.data.user);
+
+    return c.json(
+      {
+        message: "User detail retrieved successfully.",
+        user: {
+          displayName: user.display_name,
+          email: user.email,
+          emailVerifiedAt: user.email_verified_at,
+          id: user.id,
+          status: user.status,
+          vanity: user.vanity,
+        },
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404,
+      );
     }
 
     throw error;
@@ -203,6 +267,72 @@ adminRouter.openapi(updateOrganizationVanityRoute, async (c) => {
   }
 });
 
+adminRouter.openapi(updateUserVanityRoute, async (c) => {
+  const params = updateUserVanityRoute.request.params.safeParse(c.req.param());
+  const schema =
+    updateUserVanityRoute.request.body.content["application/json"].schema;
+  const payload = await c.req.json();
+  const body = schema.safeParse(payload);
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  if (!body.success) {
+    return c.json(
+      validationErrorFromIssues(body.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    await sessionAuth.requireOfficialStaff(getSessionCookie(c));
+
+    const db = new D1Client(c.env.APP_DB);
+    const users = new UsersRepository(db);
+    const user = await requireUserByIdentifier(users, params.data.user);
+    const existingVanity = await users.findByVanity(body.data.vanity);
+
+    if (existingVanity && existingVanity.id !== user.id) {
+      throw new ConflictError("User vanity already exists", {
+        code: "USER_VANITY_EXISTS",
+      });
+    }
+
+    const updated = await users.update(user.id, {
+      vanity: body.data.vanity,
+    });
+
+    return c.json(
+      {
+        message: "User vanity updated successfully.",
+        user: {
+          displayName: updated.display_name,
+          email: updated.email,
+          emailVerifiedAt: updated.email_verified_at,
+          id: updated.id,
+          status: updated.status,
+          vanity: updated.vanity,
+        },
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+
+    throw error;
+  }
+});
+
 function registerManagedUserAction(
   route: typeof approveUserRoute,
   action: "active" | "disabled",
@@ -234,6 +364,7 @@ function registerManagedUserAction(
             emailVerifiedAt: user.email_verified_at,
             id: user.id,
             status: user.status,
+            vanity: user.vanity,
           },
         },
         200,
