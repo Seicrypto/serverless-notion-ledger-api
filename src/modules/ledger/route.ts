@@ -1,35 +1,45 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { D1Client } from "../../infrastructure/d1/d1-client";
-import {
-  AppError,
-  buildErrorResponseBody,
-  ensureRequestId,
-} from "../../lib/errors";
-import { CharactersRepository } from "../../repositories/characters-repository";
-import { EventsRepository } from "../../repositories/events-repository";
-import { SettlementAllocationsRepository } from "../../repositories/settlement-allocations-repository";
-import { SettlementClaimsRepository } from "../../repositories/settlement-claims-repository";
-import { SettlementsRepository } from "../../repositories/settlements-repository";
+import { AppError, buildErrorResponseBody, ensureRequestId } from "../../lib/errors";
+import { GamesRepository } from "../../repositories/games-repository";
+import { OrganizationGamesRepository } from "../../repositories/organization-games-repository";
 import type {
+  AssetRecord,
   EventRecord,
+  EventStatus,
   SettlementAllocationRecord,
   SettlementClaimRecord,
   SettlementRecord,
 } from "../../repositories/types";
+import { AssetIdentityResolutionService } from "../../services/assets/asset-identity-resolution-service";
 import { AllocationLifecycleService } from "../../services/ledger/allocation-lifecycle-service";
 import { ClaimLifecycleService } from "../../services/ledger/claim-lifecycle-service";
 import { EventLifecycleService } from "../../services/ledger/event-lifecycle-service";
 import { SettlementLifecycleService } from "../../services/ledger/settlement-lifecycle-service";
 import type { AppBindings } from "../../types/hono";
 import {
-  requireTargetOrganizationManager,
-  requireTargetOrganizationMember,
-} from "../organizations/middleware";
+  assertLedgerManager,
+  requireLedgerAllocation,
+  requireLedgerCharacter,
+  requireLedgerClaim,
+  requireLedgerEvent,
+  requireLedgerMembership,
+  requireLedgerOrganization,
+  requireLedgerSession,
+  requireLedgerSettlement,
+} from "./guards";
+import {
+  requireLedgerManager,
+  requireLedgerMember,
+} from "./middleware";
 import {
   createLedgerAllocationRoute,
   createLedgerClaimRoute,
   createLedgerEventRoute,
   createLedgerSettlementRoute,
+  getLedgerSettlementDefaultsRoute,
+  listLedgerEventsRoute,
+  listLedgerSettlementsRoute,
   updateLedgerAllocationStatusRoute,
   updateLedgerClaimStatusRoute,
   updateLedgerEventStatusRoute,
@@ -38,15 +48,29 @@ import {
 
 export const organizationLedgerRouter = new OpenAPIHono<AppBindings>();
 
+const SUPPORTED_ALLOCATION_MODES: Array<"equal" | "weight" | "manual"> = [
+  "equal",
+  "weight",
+  "manual",
+];
+
+const SUPPORTED_FEE_MODES: Array<"none" | "percent" | "fixed" | "rule"> = [
+  "none",
+  "percent",
+  "fixed",
+  "rule",
+];
+
 function validationErrorFromIssues(
   issues: Array<{ message: string; path: PropertyKey[] }>,
   requestId: string,
+  defaultPath: "body" | "query" | "params" = "body",
 ) {
   return {
     code: "VALIDATION_ERROR",
     error: "Validation failed",
     issues: issues.map((issue) => {
-      const path = issue.path.map(String).join(".") || "body";
+      const path = issue.path.map(String).join(".") || defaultPath;
       return `${path}: ${issue.message}`;
     }),
     requestId,
@@ -55,36 +79,140 @@ function validationErrorFromIssues(
 
 organizationLedgerRouter.use(
   "/{organization}/ledger/events",
-  requireTargetOrganizationMember,
+  requireLedgerMember,
 );
 organizationLedgerRouter.use(
   "/{organization}/ledger/events/{eventId}/status",
-  requireTargetOrganizationManager,
+  requireLedgerManager,
 );
 organizationLedgerRouter.use(
   "/{organization}/ledger/settlements",
-  requireTargetOrganizationManager,
+  requireLedgerMember,
 );
 organizationLedgerRouter.use(
   "/{organization}/ledger/settlements/{settlementId}/status",
-  requireTargetOrganizationManager,
+  requireLedgerManager,
+);
+organizationLedgerRouter.use(
+  "/{organization}/ledger/settlement-defaults",
+  requireLedgerMember,
 );
 organizationLedgerRouter.use(
   "/{organization}/ledger/allocations",
-  requireTargetOrganizationManager,
+  requireLedgerManager,
 );
 organizationLedgerRouter.use(
   "/{organization}/ledger/allocations/{allocationId}/status",
-  requireTargetOrganizationManager,
+  requireLedgerManager,
 );
 organizationLedgerRouter.use(
   "/{organization}/ledger/claims",
-  requireTargetOrganizationMember,
+  requireLedgerMember,
 );
 organizationLedgerRouter.use(
   "/{organization}/ledger/claims/{claimId}/status",
-  requireTargetOrganizationManager,
+  requireLedgerManager,
 );
+
+organizationLedgerRouter.openapi(listLedgerEventsRoute, async (c) => {
+  const parsed = listLedgerEventsRoute.request.query.safeParse(c.req.query());
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c), "query"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+
+    const db = new D1Client(c.env.APP_DB);
+    const limit = parsed.data.limit ?? 20;
+    const offset = parsed.data.offset ?? 0;
+    const sortBy = parsed.data.sortBy ?? "occurredAt";
+    const sortOrder = parsed.data.sortOrder ?? "desc";
+    const sortColumn = mapEventSortColumn(sortBy);
+    const whereClauses = [`organization_id = ?`];
+    const bindings: unknown[] = [organization.id];
+
+    if (parsed.data.status) {
+      whereClauses.push(`status = ?`);
+      bindings.push(parsed.data.status);
+    } else if (parsed.data.statusGroup) {
+      const statuses = mapEventStatusGroup(parsed.data.statusGroup);
+      whereClauses.push(`status IN (${statuses.map(() => "?").join(", ")})`);
+      bindings.push(...statuses);
+    }
+
+    if (parsed.data.createdByUserId) {
+      whereClauses.push(`created_by_user_id = ?`);
+      bindings.push(parsed.data.createdByUserId);
+    }
+
+    if (parsed.data.assetId) {
+      whereClauses.push(`asset_id = ?`);
+      bindings.push(parsed.data.assetId);
+    }
+
+    if (parsed.data.holderType) {
+      whereClauses.push(`holder_type = ?`);
+      bindings.push(parsed.data.holderType);
+    }
+
+    if (parsed.data.holderRef) {
+      whereClauses.push(`holder_ref = ?`);
+      bindings.push(parsed.data.holderRef);
+    }
+
+    if (parsed.data.eventType) {
+      whereClauses.push(`event_type = ?`);
+      bindings.push(parsed.data.eventType);
+    }
+
+    if (parsed.data.fromOccurredAt) {
+      whereClauses.push(`occurred_at >= ?`);
+      bindings.push(parsed.data.fromOccurredAt);
+    }
+
+    if (parsed.data.toOccurredAt) {
+      whereClauses.push(`occurred_at <= ?`);
+      bindings.push(parsed.data.toOccurredAt);
+    }
+
+    bindings.push(limit + 1, offset);
+
+    const rows = await db.all<EventRecord>(
+      `SELECT *
+       FROM events
+       WHERE ${whereClauses.join(" AND ")}
+       ORDER BY ${sortColumn} ${sortOrder.toUpperCase()}, id ${sortOrder.toUpperCase()}
+       LIMIT ?
+       OFFSET ?`,
+      ...bindings,
+    );
+
+    const hasMore = rows.length > limit;
+    const events = hasMore ? rows.slice(0, limit) : rows;
+
+    return c.json(
+      {
+        events: events.map(toEventResponse),
+        pagination: {
+          hasMore,
+          limit,
+          offset,
+        },
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
 
 organizationLedgerRouter.openapi(createLedgerEventRoute, async (c) => {
   const schema = createLedgerEventRoute.request.body.content["application/json"].schema;
@@ -98,13 +226,8 @@ organizationLedgerRouter.openapi(createLedgerEventRoute, async (c) => {
   }
 
   try {
-    const organization = c.get("organization");
-    const session = c.get("session");
-    if (!organization || !session) {
-      throw new AppError("Organization context is required", 404, {
-        code: "ORGANIZATION_CONTEXT_REQUIRED",
-      });
-    }
+    const organization = requireLedgerOrganization(c);
+    const session = requireLedgerSession(c);
 
     const db = new D1Client(c.env.APP_DB);
     const service = new EventLifecycleService(db);
@@ -131,10 +254,7 @@ organizationLedgerRouter.openapi(createLedgerEventRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json(
-        buildErrorResponseBody(c, error),
-        error.status as 401 | 403 | 404 | 409,
-      );
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
     }
 
     throw error;
@@ -145,7 +265,7 @@ organizationLedgerRouter.openapi(updateLedgerEventStatusRoute, async (c) => {
   const paramsParsed = updateLedgerEventStatusRoute.request.params.safeParse(c.req.param());
   if (!paramsParsed.success) {
     return c.json(
-      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c)),
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
       422,
     );
   }
@@ -161,15 +281,10 @@ organizationLedgerRouter.openapi(updateLedgerEventStatusRoute, async (c) => {
   }
 
   try {
-    const organization = c.get("organization");
-    if (!organization) {
-      throw new AppError("Organization context is required", 404, {
-        code: "ORGANIZATION_CONTEXT_REQUIRED",
-      });
-    }
+    const organization = requireLedgerOrganization(c);
 
     const db = new D1Client(c.env.APP_DB);
-    const event = await requireOrganizationEvent(
+    const event = await requireLedgerEvent(
       db,
       paramsParsed.data.eventId,
       organization.id,
@@ -188,10 +303,177 @@ organizationLedgerRouter.openapi(updateLedgerEventStatusRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json(
-        buildErrorResponseBody(c, error),
-        error.status as 401 | 403 | 404 | 409,
-      );
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(listLedgerSettlementsRoute, async (c) => {
+  const parsed = listLedgerSettlementsRoute.request.query.safeParse(c.req.query());
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c), "query"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+
+    const db = new D1Client(c.env.APP_DB);
+    const limit = parsed.data.limit ?? 20;
+    const offset = parsed.data.offset ?? 0;
+    const sortBy = parsed.data.sortBy ?? "decidedAt";
+    const sortOrder = parsed.data.sortOrder ?? "desc";
+    const sortColumn = mapSettlementSortColumn(sortBy);
+    const whereClauses = [`organization_id = ?`];
+    const bindings: unknown[] = [organization.id];
+
+    if (parsed.data.status) {
+      whereClauses.push(`status = ?`);
+      bindings.push(parsed.data.status);
+    }
+
+    if (parsed.data.createdByUserId) {
+      whereClauses.push(`created_by_user_id = ?`);
+      bindings.push(parsed.data.createdByUserId);
+    }
+
+    if (parsed.data.eventId) {
+      whereClauses.push(`event_id = ?`);
+      bindings.push(parsed.data.eventId);
+    }
+
+    if (parsed.data.feeMode) {
+      whereClauses.push(`fee_mode = ?`);
+      bindings.push(parsed.data.feeMode);
+    }
+
+    if (parsed.data.unitAssetId) {
+      whereClauses.push(`unit_asset_id = ?`);
+      bindings.push(parsed.data.unitAssetId);
+    }
+
+    if (parsed.data.settlementType) {
+      whereClauses.push(`settlement_type = ?`);
+      bindings.push(parsed.data.settlementType);
+    }
+
+    if (parsed.data.fromDecidedAt) {
+      whereClauses.push(`decided_at >= ?`);
+      bindings.push(parsed.data.fromDecidedAt);
+    }
+
+    if (parsed.data.toDecidedAt) {
+      whereClauses.push(`decided_at <= ?`);
+      bindings.push(parsed.data.toDecidedAt);
+    }
+
+    bindings.push(limit + 1, offset);
+
+    const rows = await db.all<SettlementRecord>(
+      `SELECT *
+       FROM settlements
+       WHERE ${whereClauses.join(" AND ")}
+       ORDER BY ${sortColumn} ${sortOrder.toUpperCase()}, id ${sortOrder.toUpperCase()}
+       LIMIT ?
+       OFFSET ?`,
+      ...bindings,
+    );
+
+    const hasMore = rows.length > limit;
+    const settlements = hasMore ? rows.slice(0, limit) : rows;
+
+    return c.json(
+      {
+        pagination: {
+          hasMore,
+          limit,
+          offset,
+        },
+        settlements: settlements.map(toSettlementResponse),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(getLedgerSettlementDefaultsRoute, async (c) => {
+  const parsed = getLedgerSettlementDefaultsRoute.request.query.safeParse(c.req.query());
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c), "query"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+
+    const db = new D1Client(c.env.APP_DB);
+    const organizationGames = await new OrganizationGamesRepository(db).listByOrganization(
+      organization.id,
+    );
+    const organizationGame =
+      parsed.data.gameId !== undefined
+        ? organizationGames.find((candidate) => candidate.game_id === parsed.data.gameId) ?? null
+        : organizationGames.find((candidate) => candidate.is_primary === 1) ??
+          organizationGames[0] ??
+          null;
+
+    const game = organizationGame
+      ? await new GamesRepository(db).findById(organizationGame.game_id)
+      : null;
+
+    if (parsed.data.gameId && !game) {
+      throw new AppError("Game not found for this organization", 404, {
+        code: "ORGANIZATION_GAME_NOT_FOUND",
+      });
+    }
+
+    const defaultSettlementUnit =
+      game === null
+        ? null
+        : await new AssetIdentityResolutionService(db).resolveDefaultSettlementUnit({
+            gameId: game.id,
+            organizationId: organization.id,
+          });
+
+    return c.json(
+      {
+        defaults: {
+          defaultAllocationMode: "equal" as const,
+          defaultFeeMode: "none" as const,
+          defaultSettlementUnit: defaultSettlementUnit
+            ? toSettlementDefaultUnit(defaultSettlementUnit)
+            : null,
+          supportedAllocationModes: SUPPORTED_ALLOCATION_MODES,
+          supportedFeeModes: SUPPORTED_FEE_MODES,
+        },
+        game: game
+          ? {
+              id: game.id,
+              name: game.name,
+              organizationDisplayName: organizationGame?.display_name ?? null,
+              slug: game.slug,
+              source: game.source,
+              type: game.type,
+            }
+          : null,
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
     }
 
     throw error;
@@ -211,21 +493,17 @@ organizationLedgerRouter.openapi(createLedgerSettlementRoute, async (c) => {
   }
 
   try {
-    const organization = c.get("organization");
-    const session = c.get("session");
-    if (!organization || !session) {
-      throw new AppError("Organization context is required", 404, {
-        code: "ORGANIZATION_CONTEXT_REQUIRED",
-      });
-    }
+    const organization = requireLedgerOrganization(c);
+    const membership = requireLedgerMembership(c);
+    const session = requireLedgerSession(c);
+    assertLedgerManager(membership);
 
     const db = new D1Client(c.env.APP_DB);
     if (parsed.data.eventId) {
-      await requireOrganizationEvent(db, parsed.data.eventId, organization.id);
+      await requireLedgerEvent(db, parsed.data.eventId, organization.id);
     }
 
-    const service = new SettlementLifecycleService(db);
-    const settlement = await service.createDraftSettlement({
+    const settlement = await new SettlementLifecycleService(db).createDraftSettlement({
       allocationMode: parsed.data.allocationMode,
       createdByUserId: session.user.id,
       decidedAt: parsed.data.decidedAt,
@@ -254,10 +532,7 @@ organizationLedgerRouter.openapi(createLedgerSettlementRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json(
-        buildErrorResponseBody(c, error),
-        error.status as 401 | 403 | 404 | 409,
-      );
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
     }
 
     throw error;
@@ -269,7 +544,7 @@ organizationLedgerRouter.openapi(updateLedgerSettlementStatusRoute, async (c) =>
     updateLedgerSettlementStatusRoute.request.params.safeParse(c.req.param());
   if (!paramsParsed.success) {
     return c.json(
-      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c)),
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
       422,
     );
   }
@@ -285,15 +560,10 @@ organizationLedgerRouter.openapi(updateLedgerSettlementStatusRoute, async (c) =>
   }
 
   try {
-    const organization = c.get("organization");
-    if (!organization) {
-      throw new AppError("Organization context is required", 404, {
-        code: "ORGANIZATION_CONTEXT_REQUIRED",
-      });
-    }
+    const organization = requireLedgerOrganization(c);
 
     const db = new D1Client(c.env.APP_DB);
-    const settlement = await requireOrganizationSettlement(
+    const settlement = await requireLedgerSettlement(
       db,
       paramsParsed.data.settlementId,
       organization.id,
@@ -312,10 +582,7 @@ organizationLedgerRouter.openapi(updateLedgerSettlementStatusRoute, async (c) =>
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json(
-        buildErrorResponseBody(c, error),
-        error.status as 401 | 403 | 404 | 409,
-      );
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
     }
 
     throw error;
@@ -335,17 +602,12 @@ organizationLedgerRouter.openapi(createLedgerAllocationRoute, async (c) => {
   }
 
   try {
-    const organization = c.get("organization");
-    if (!organization) {
-      throw new AppError("Organization context is required", 404, {
-        code: "ORGANIZATION_CONTEXT_REQUIRED",
-      });
-    }
+    const organization = requireLedgerOrganization(c);
 
     const db = new D1Client(c.env.APP_DB);
-    await requireOrganizationSettlement(db, parsed.data.settlementId, organization.id);
+    await requireLedgerSettlement(db, parsed.data.settlementId, organization.id);
     if (parsed.data.characterId) {
-      await requireOrganizationCharacter(db, parsed.data.characterId, organization.id);
+      await requireLedgerCharacter(db, parsed.data.characterId, organization.id);
     }
 
     const allocation = await new AllocationLifecycleService(db).createPendingAllocation({
@@ -365,10 +627,7 @@ organizationLedgerRouter.openapi(createLedgerAllocationRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json(
-        buildErrorResponseBody(c, error),
-        error.status as 401 | 403 | 404 | 409,
-      );
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
     }
 
     throw error;
@@ -380,7 +639,7 @@ organizationLedgerRouter.openapi(updateLedgerAllocationStatusRoute, async (c) =>
     updateLedgerAllocationStatusRoute.request.params.safeParse(c.req.param());
   if (!paramsParsed.success) {
     return c.json(
-      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c)),
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
       422,
     );
   }
@@ -396,15 +655,10 @@ organizationLedgerRouter.openapi(updateLedgerAllocationStatusRoute, async (c) =>
   }
 
   try {
-    const organization = c.get("organization");
-    if (!organization) {
-      throw new AppError("Organization context is required", 404, {
-        code: "ORGANIZATION_CONTEXT_REQUIRED",
-      });
-    }
+    const organization = requireLedgerOrganization(c);
 
     const db = new D1Client(c.env.APP_DB);
-    const allocation = await requireOrganizationAllocation(
+    const allocation = await requireLedgerAllocation(
       db,
       paramsParsed.data.allocationId,
       organization.id,
@@ -423,10 +677,7 @@ organizationLedgerRouter.openapi(updateLedgerAllocationStatusRoute, async (c) =>
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json(
-        buildErrorResponseBody(c, error),
-        error.status as 401 | 403 | 404 | 409,
-      );
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
     }
 
     throw error;
@@ -446,21 +697,16 @@ organizationLedgerRouter.openapi(createLedgerClaimRoute, async (c) => {
   }
 
   try {
-    const organization = c.get("organization");
-    if (!organization) {
-      throw new AppError("Organization context is required", 404, {
-        code: "ORGANIZATION_CONTEXT_REQUIRED",
-      });
-    }
+    const organization = requireLedgerOrganization(c);
 
     const db = new D1Client(c.env.APP_DB);
-    await requireOrganizationAllocation(
+    await requireLedgerAllocation(
       db,
       parsed.data.settlementAllocationId,
       organization.id,
     );
     if (parsed.data.claimedByCharacterId) {
-      await requireOrganizationCharacter(
+      await requireLedgerCharacter(
         db,
         parsed.data.claimedByCharacterId,
         organization.id,
@@ -485,10 +731,7 @@ organizationLedgerRouter.openapi(createLedgerClaimRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json(
-        buildErrorResponseBody(c, error),
-        error.status as 401 | 403 | 404 | 409,
-      );
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
     }
 
     throw error;
@@ -500,7 +743,7 @@ organizationLedgerRouter.openapi(updateLedgerClaimStatusRoute, async (c) => {
     updateLedgerClaimStatusRoute.request.params.safeParse(c.req.param());
   if (!paramsParsed.success) {
     return c.json(
-      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c)),
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
       422,
     );
   }
@@ -516,16 +759,11 @@ organizationLedgerRouter.openapi(updateLedgerClaimStatusRoute, async (c) => {
   }
 
   try {
-    const organization = c.get("organization");
-    const session = c.get("session");
-    if (!organization || !session) {
-      throw new AppError("Organization context is required", 404, {
-        code: "ORGANIZATION_CONTEXT_REQUIRED",
-      });
-    }
+    const organization = requireLedgerOrganization(c);
+    const session = requireLedgerSession(c);
 
     const db = new D1Client(c.env.APP_DB);
-    const { claim } = await requireOrganizationClaim(
+    const { claim } = await requireLedgerClaim(
       db,
       paramsParsed.data.claimId,
       organization.id,
@@ -545,113 +783,59 @@ organizationLedgerRouter.openapi(updateLedgerClaimStatusRoute, async (c) => {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json(
-        buildErrorResponseBody(c, error),
-        error.status as 401 | 403 | 404 | 409,
-      );
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
     }
 
     throw error;
   }
 });
 
-async function requireOrganizationEvent(
-  db: D1Client,
-  eventId: number,
-  organizationId: number,
-) {
-  const event = await new EventsRepository(db).findById(eventId);
-  if (!event) {
-    throw new AppError("Event not found", 404, {
-      code: "EVENT_NOT_FOUND",
-    });
+function mapEventSortColumn(sortBy: "occurredAt" | "createdAt" | "title" | "updatedAt") {
+  switch (sortBy) {
+    case "createdAt":
+      return "created_at";
+    case "title":
+      return "title";
+    case "updatedAt":
+      return "updated_at";
+    case "occurredAt":
+    default:
+      return "occurred_at";
   }
-
-  if (event.organization_id !== organizationId) {
-    throw new AppError("Event does not belong to this organization", 404, {
-      code: "EVENT_NOT_FOUND",
-    });
-  }
-
-  return event;
 }
 
-async function requireOrganizationSettlement(
-  db: D1Client,
-  settlementId: number,
-  organizationId: number,
+function mapSettlementSortColumn(
+  sortBy: "decidedAt" | "createdAt" | "grossAmount" | "netAmount" | "updatedAt",
 ) {
-  const settlement = await new SettlementsRepository(db).findById(settlementId);
-  if (!settlement) {
-    throw new AppError("Settlement not found", 404, {
-      code: "SETTLEMENT_NOT_FOUND",
-    });
+  switch (sortBy) {
+    case "createdAt":
+      return "created_at";
+    case "grossAmount":
+      return "gross_amount";
+    case "netAmount":
+      return "net_amount";
+    case "updatedAt":
+      return "updated_at";
+    case "decidedAt":
+    default:
+      return "decided_at";
   }
-
-  if (settlement.organization_id !== organizationId) {
-    throw new AppError("Settlement does not belong to this organization", 404, {
-      code: "SETTLEMENT_NOT_FOUND",
-    });
-  }
-
-  return settlement;
 }
 
-async function requireOrganizationAllocation(
-  db: D1Client,
-  allocationId: number,
-  organizationId: number,
-) {
-  const allocation = await new SettlementAllocationsRepository(db).findById(allocationId);
-  if (!allocation) {
-    throw new AppError("Allocation not found", 404, {
-      code: "ALLOCATION_NOT_FOUND",
-    });
+function mapEventStatusGroup(
+  group: "unsettled" | "settleable" | "settled" | "cancelled",
+): readonly EventStatus[] {
+  switch (group) {
+    case "settleable":
+      return ["ready_for_settlement", "partially_settled"];
+    case "settled":
+      return ["settled"];
+    case "cancelled":
+      return ["cancelled"];
+    case "unsettled":
+    default:
+      return ["open", "ready_for_settlement", "partially_settled"];
   }
-
-  await requireOrganizationSettlement(db, allocation.settlement_id, organizationId);
-  return allocation;
-}
-
-async function requireOrganizationClaim(
-  db: D1Client,
-  claimId: number,
-  organizationId: number,
-) {
-  const claim = await new SettlementClaimsRepository(db).findById(claimId);
-  if (!claim) {
-    throw new AppError("Claim not found", 404, {
-      code: "CLAIM_NOT_FOUND",
-    });
-  }
-
-  const allocation = await requireOrganizationAllocation(
-    db,
-    claim.settlement_allocation_id,
-    organizationId,
-  );
-  return { allocation, claim };
-}
-
-async function requireOrganizationCharacter(
-  db: D1Client,
-  characterId: number,
-  organizationId: number,
-) {
-  const character = await new CharactersRepository(db).findById(characterId);
-  if (!character) {
-    throw new AppError("Character not found", 404, {
-      code: "CHARACTER_NOT_FOUND",
-    });
-  }
-
-  if (character.organization_id !== organizationId) {
-    throw new AppError("Character does not belong to this organization", 404, {
-      code: "CHARACTER_NOT_FOUND",
-    });
-  }
-
-  return character;
 }
 
 function toEventResponse(event: EventRecord) {
@@ -732,5 +916,17 @@ function toClaimResponse(claim: SettlementClaimRecord) {
     updatedAt: claim.updated_at,
     voidedAt: claim.voided_at,
     voidedByUserId: claim.voided_by_user_id,
+  };
+}
+
+function toSettlementDefaultUnit(asset: AssetRecord) {
+  return {
+    assetKey: asset.asset_key,
+    assetType: asset.asset_type,
+    id: asset.id,
+    name: asset.name,
+    organizationId: asset.organization_id,
+    scope: asset.scope,
+    status: asset.status,
   };
 }

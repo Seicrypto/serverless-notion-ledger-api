@@ -250,6 +250,122 @@ const claimResponseSchema = z
   })
   .openapi("LedgerClaimResponse");
 
+const paginationSchema = z
+  .object({
+    hasMore: z.boolean(),
+    limit: z.number().int().positive(),
+    offset: z.number().int().nonnegative(),
+  })
+  .openapi("LedgerPagination");
+
+const eventListQuerySchema = z
+  .object({
+    assetId: z.coerce.number().int().positive().optional(),
+    createdByUserId: z.coerce.number().int().positive().optional(),
+    eventType: z
+      .enum(["loot", "raid", "activity", "bonus", "salary", "guild_event", "other"])
+      .optional(),
+    fromOccurredAt: z.string().datetime().optional(),
+    holderRef: z.string().trim().min(1).max(255).optional(),
+    holderType: z
+      .enum(["character", "org_treasury", "market", "external", "custom"])
+      .optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    sortBy: z.enum(["occurredAt", "createdAt", "title", "updatedAt"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
+    status: z
+      .enum([
+        "open",
+        "ready_for_settlement",
+        "partially_settled",
+        "settled",
+        "cancelled",
+      ])
+      .optional(),
+    statusGroup: z
+      .enum(["unsettled", "settleable", "settled", "cancelled"])
+      .optional(),
+    toOccurredAt: z.string().datetime().optional(),
+  })
+  .openapi("LedgerEventListQuery");
+
+const settlementListQuerySchema = z
+  .object({
+    createdByUserId: z.coerce.number().int().positive().optional(),
+    eventId: z.coerce.number().int().positive().optional(),
+    feeMode: z.enum(["none", "percent", "fixed", "rule"]).optional(),
+    fromDecidedAt: z.string().datetime().optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    sortBy: z
+      .enum(["decidedAt", "createdAt", "grossAmount", "netAmount", "updatedAt"])
+      .optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
+    status: z.enum(["draft", "calculated", "paying", "paid", "cancelled"]).optional(),
+    settlementType: z
+      .enum(["sale", "bonus", "salary", "reward", "subsidy", "adjustment"])
+      .optional(),
+    toDecidedAt: z.string().datetime().optional(),
+    unitAssetId: z.coerce.number().int().positive().optional(),
+  })
+  .openapi("LedgerSettlementListQuery");
+
+const settlementDefaultsQuerySchema = z
+  .object({
+    gameId: z.coerce.number().int().positive().optional(),
+  })
+  .openapi("LedgerSettlementDefaultsQuery");
+
+const settlementDefaultUnitSchema = z
+  .object({
+    assetKey: z.string(),
+    assetType: z.enum(["item", "currency", "ticket", "reward", "service", "other"]),
+    id: z.number().int().positive(),
+    name: z.string(),
+    organizationId: z.number().int().positive().nullable(),
+    scope: z.enum(["global", "organization"]),
+    status: z.enum(["candidate", "org_verified", "active", "merged", "deprecated"]),
+  })
+  .nullable()
+  .openapi("LedgerSettlementDefaultUnit");
+
+const settlementDefaultsResponseSchema = z
+  .object({
+    defaults: z.object({
+      defaultAllocationMode: z.enum(["equal", "weight", "manual"]),
+      defaultFeeMode: z.enum(["none", "percent", "fixed", "rule"]),
+      defaultSettlementUnit: settlementDefaultUnitSchema,
+      supportedAllocationModes: z.array(z.enum(["equal", "weight", "manual"])),
+      supportedFeeModes: z.array(z.enum(["none", "percent", "fixed", "rule"])),
+    }),
+    game: z
+      .object({
+        id: z.number().int().positive(),
+        name: z.string(),
+        organizationDisplayName: z.string().nullable(),
+        slug: z.string(),
+        source: z.enum(["internal", "steam"]),
+        type: z.enum(["game", "activity"]),
+      })
+      .nullable(),
+  })
+  .openapi("LedgerSettlementDefaultsResponse");
+
+const eventListResponseSchema = z
+  .object({
+    events: z.array(eventSchema),
+    pagination: paginationSchema,
+  })
+  .openapi("LedgerEventListResponse");
+
+const settlementListResponseSchema = z
+  .object({
+    pagination: paginationSchema,
+    settlements: z.array(settlementSchema),
+  })
+  .openapi("LedgerSettlementListResponse");
+
 export const createLedgerEventRoute = createRoute({
   method: "post",
   path: "/{organization}/ledger/events",
@@ -270,6 +386,26 @@ export const createLedgerEventRoute = createRoute({
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
     404: { content: { "application/json": { schema: errorSchema } }, description: "Organization or related record not found." },
     409: { content: { "application/json": { schema: errorSchema } }, description: "Business rule conflict." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const listLedgerEventsRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/events",
+  tags: ["Ledger", "Events"],
+  request: {
+    params: organizationParamSchema,
+    query: eventListQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: eventListResponseSchema } },
+      description: "List organization ledger events with filters.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization not found." },
     422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
   },
 });
@@ -318,6 +454,48 @@ export const createLedgerSettlementRoute = createRoute({
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },
     404: { content: { "application/json": { schema: errorSchema } }, description: "Related record not found." },
     409: { content: { "application/json": { schema: errorSchema } }, description: "Business rule conflict." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const listLedgerSettlementsRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/settlements",
+  tags: ["Ledger", "Settlements"],
+  request: {
+    params: organizationParamSchema,
+    query: settlementListQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: settlementListResponseSchema } },
+      description: "List organization settlements with filters.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const getLedgerSettlementDefaultsRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/settlement-defaults",
+  tags: ["Ledger", "Settlements"],
+  request: {
+    params: organizationParamSchema,
+    query: settlementDefaultsQuerySchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": { schema: settlementDefaultsResponseSchema },
+      },
+      description: "Get settlement and game defaults for an organization.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Game not found." },
     422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
   },
 });
