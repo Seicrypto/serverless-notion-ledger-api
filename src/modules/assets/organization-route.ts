@@ -46,6 +46,7 @@ organizationAssetsRouter.openapi(createOrganizationAssetRoute, async (c) => {
 
   try {
     const organization = c.get("organization");
+    const session = c.get("session");
     const db = new D1Client(c.env.APP_DB);
     const service = new AssetLifecycleService(db);
     const gameId = organization
@@ -62,6 +63,7 @@ organizationAssetsRouter.openapi(createOrganizationAssetRoute, async (c) => {
 
     const result = await service.createAsset({
       assetType: parsed.data.assetType,
+      createdByUserId: session?.user.id ?? null,
       gameId,
       iconUrl: parsed.data.iconUrl,
       metadataJson: parsed.data.metadataJson,

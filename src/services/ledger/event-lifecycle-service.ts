@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError } from "../../lib/errors";
 import { EventsRepository } from "../../repositories/events-repository";
 import { OrganizationGamesRepository } from "../../repositories/organization-games-repository";
 import { SettlementsRepository } from "../../repositories/settlements-repository";
+import { AssetTrustLifecycleService } from "../assets/asset-trust-lifecycle-service";
 import type {
   EventRecord,
   EventStatus,
@@ -22,12 +23,18 @@ export class EventLifecycleService implements EventLifecyclePort {
     const gameId =
       input.gameId === undefined ? await this.resolvePrimaryGameId(input.organizationId) : input.gameId;
 
-    return repository.create({
+    const created = await repository.create({
       ...input,
       eventKey: input.eventKey || `evt-${randomUUID().slice(0, 12)}`,
       gameId,
       status: input.status ?? "open",
     });
+
+    if (created.asset_id) {
+      await new AssetTrustLifecycleService(this.db).recomputeStatus(created.asset_id);
+    }
+
+    return created;
   }
 
   async transitionStatus(

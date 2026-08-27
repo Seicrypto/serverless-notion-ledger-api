@@ -1,21 +1,18 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseClient } from "../../infrastructure/database/database-client";
-import { ConflictError, NotFoundError } from "../../lib/errors";
+import { NotFoundError } from "../../lib/errors";
 import { AssetAliasesRepository } from "../../repositories/asset-aliases-repository";
 import { AssetsRepository } from "../../repositories/assets-repository";
 import { GamesRepository } from "../../repositories/games-repository";
-import type {
-  AssetAliasRecord,
-  AssetRecord,
-  AssetScope,
-  AssetType,
-} from "../../repositories/types";
+import type { AssetAliasRecord, AssetRecord, AssetType } from "../../repositories/types";
 import { AssetDuplicateDetectionService } from "./asset-duplicate-detection-service";
-import { AssetNormalizationService } from "./asset-normalization-service";
+import { AssetIdentityResolutionService } from "./asset-identity-resolution-service";
+import { AssetTrustLifecycleService } from "./asset-trust-lifecycle-service";
 import type { AssetDuplicateDetectionResult } from "./types";
 
 export interface CreateAssetLifecycleInput {
   assetType?: AssetType;
+  createdByUserId?: number | null;
   gameId: number;
   iconUrl?: string | null;
   metadataJson?: string | null;
@@ -40,7 +37,8 @@ export class AssetLifecycleService {
   private readonly assetsRepository: AssetsRepository;
   private readonly duplicateDetectionService: AssetDuplicateDetectionService;
   private readonly gamesRepository: GamesRepository;
-  private readonly normalizationService: AssetNormalizationService;
+  private readonly identityResolutionService: AssetIdentityResolutionService;
+  private readonly trustLifecycleService: AssetTrustLifecycleService;
 
   constructor(
     private readonly db: DatabaseClient,
@@ -49,7 +47,8 @@ export class AssetLifecycleService {
       assetsRepository?: AssetsRepository;
       duplicateDetectionService?: AssetDuplicateDetectionService;
       gamesRepository?: GamesRepository;
-      normalizationService?: AssetNormalizationService;
+      identityResolutionService?: AssetIdentityResolutionService;
+      trustLifecycleService?: AssetTrustLifecycleService;
     } = {},
   ) {
     this.aliasesRepository =
@@ -58,8 +57,10 @@ export class AssetLifecycleService {
     this.duplicateDetectionService =
       options.duplicateDetectionService ?? new AssetDuplicateDetectionService(db);
     this.gamesRepository = options.gamesRepository ?? new GamesRepository(db);
-    this.normalizationService =
-      options.normalizationService ?? new AssetNormalizationService();
+    this.identityResolutionService =
+      options.identityResolutionService ?? new AssetIdentityResolutionService(db);
+    this.trustLifecycleService =
+      options.trustLifecycleService ?? new AssetTrustLifecycleService(db);
   }
 
   async createAsset(input: CreateAssetLifecycleInput): Promise<CreateAssetLifecycleResult> {
@@ -85,6 +86,7 @@ export class AssetLifecycleService {
     const asset = await this.assetsRepository.create({
       assetKey: await this.allocateAssetKey(game.slug, normalizedName),
       assetType: input.assetType ?? "item",
+      createdByUserId: input.createdByUserId ?? null,
       gameId: input.gameId,
       iconUrl: input.iconUrl ?? null,
       metadataJson: input.metadataJson ?? null,
@@ -93,6 +95,7 @@ export class AssetLifecycleService {
       organizationId: input.organizationId,
       rarityLabel: input.rarityLabel ?? null,
       scope: "organization",
+      status: this.trustLifecycleService.resolveInitialStatus(),
     });
 
     const primaryAlias = await this.aliasesRepository.create({
@@ -118,113 +121,22 @@ export class AssetLifecycleService {
     sourceAsset: AssetRecord;
     targetAsset: AssetRecord;
   }> {
-    if (input.sourceAssetId === input.targetAssetId) {
-      throw new ConflictError("Source and target asset must be different", {
-        code: "ASSET_MERGE_SELF",
-      });
-    }
-
-    const source = await this.requireAsset(input.sourceAssetId);
-    const target = await this.requireAsset(input.targetAssetId);
-
-    if (source.game_id !== target.game_id) {
-      throw new ConflictError("Assets from different games cannot be merged", {
-        code: "ASSET_MERGE_GAME_MISMATCH",
-      });
-    }
-
-    if (source.status === "merged") {
-      throw new ConflictError("Source asset is already merged", {
-        code: "ASSET_SOURCE_ALREADY_MERGED",
-      });
-    }
-
-    if (target.status === "merged") {
-      throw new ConflictError("Target asset cannot be a merged asset", {
-        code: "ASSET_TARGET_MERGED",
-      });
-    }
-
-    const canonicalTarget = await this.resolveCanonicalAsset(target.id);
-    const mergedSource = await this.assetsRepository.update(source.id, {
-      canonicalAssetId: canonicalTarget.id,
-      mergedAt: new Date().toISOString(),
-      mergedByUserId: input.mergedByUserId,
-      status: "merged",
-    });
-
-    const sourceAliases = await this.aliasesRepository.listByAsset(source.id);
-    const targetAliases = await this.aliasesRepository.listByAsset(canonicalTarget.id);
-    const existingAliasKeys = new Set(
-      targetAliases.map((alias) =>
-        `${alias.normalized_alias}:${alias.locale ?? ""}:${alias.region_code ?? ""}`,
-      ),
-    );
-
-    for (const alias of sourceAliases) {
-      const key = `${alias.normalized_alias}:${alias.locale ?? ""}:${alias.region_code ?? ""}`;
-      if (existingAliasKeys.has(key)) {
-        continue;
-      }
-
-      await this.aliasesRepository.create({
-        alias: alias.alias,
-        aliasType: alias.alias_type,
-        assetId: canonicalTarget.id,
-        isPrimary: false,
-        locale: alias.locale,
-        normalizedAlias: alias.normalized_alias,
-        regionCode: alias.region_code,
-      });
-    }
-
-    return {
-      sourceAsset: mergedSource,
-      targetAsset: canonicalTarget,
-    };
+    return this.identityResolutionService.mergeAsset(input);
   }
 
   async resolveCanonicalAsset(assetId: number): Promise<AssetRecord> {
-    let current = await this.requireAsset(assetId);
-    const seen = new Set<number>();
-
-    while (current.status === "merged" && current.canonical_asset_id) {
-      if (seen.has(current.id)) {
-        throw new ConflictError("Asset merge chain contains a cycle", {
-          code: "ASSET_MERGE_CYCLE",
-        });
-      }
-
-      seen.add(current.id);
-      current = await this.requireAsset(current.canonical_asset_id);
-    }
-
-    return current;
+    return this.identityResolutionService.resolveCanonicalAsset(assetId);
   }
 
   async resolveDefaultSettlementUnit(input: {
     gameId: number;
     organizationId?: number | null;
   }): Promise<AssetRecord | null> {
-    const candidates = await this.assetsRepository.listByGame(input.gameId);
-    const usable = candidates.filter(
-      (asset) =>
-        asset.asset_type === "currency" &&
-        asset.status !== "merged" &&
-        asset.is_default_settlement_unit === 1,
-    );
+    return this.identityResolutionService.resolveDefaultSettlementUnit(input);
+  }
 
-    const organizationScoped = usable.find(
-      (asset) =>
-        asset.scope === "organization" &&
-        asset.organization_id === (input.organizationId ?? null),
-    );
-
-    if (organizationScoped) {
-      return organizationScoped;
-    }
-
-    return usable.find((asset) => asset.scope === "global") ?? null;
+  async recomputeTrust(assetId: number): Promise<AssetRecord> {
+    return this.trustLifecycleService.recomputeStatus(assetId);
   }
 
   private async allocateAssetKey(gameSlug: string, normalizedName: string): Promise<string> {
@@ -239,18 +151,7 @@ export class AssetLifecycleService {
       }
     }
 
-    throw new ConflictError("Failed to allocate a unique asset key", {
-      code: "ASSET_KEY_ALLOCATION_FAILED",
-    });
-  }
-
-  private async requireAsset(assetId: number): Promise<AssetRecord> {
-    const asset = await this.assetsRepository.findById(assetId);
-    if (!asset) {
-      throw new NotFoundError("Asset not found");
-    }
-
-    return asset;
+    throw new Error("Failed to allocate a unique asset key");
   }
 }
 
@@ -259,8 +160,7 @@ function slugify(normalizedName: string): string {
     .normalize("NFKC")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9\-\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/gu, "")
-    .replace(/\-+/g, "-")
-    .replace(/^\-|\-$/g, "");
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
 }

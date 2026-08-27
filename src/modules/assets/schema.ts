@@ -18,7 +18,7 @@ const assetSchema = z
     organizationId: z.number().int().positive().nullable(),
     rarityLabel: z.string().nullable(),
     scope: z.enum(["global", "organization"]),
-    status: z.enum(["active", "merged", "deprecated"]),
+    status: z.enum(["candidate", "org_verified", "active", "merged", "deprecated"]),
     updatedAt: z.string(),
   })
   .openapi("Asset");
@@ -70,7 +70,7 @@ const createAssetConflictResponseSchema = z
       exactMatch: duplicateCandidateSchema.nullable(),
       normalizedName: z.string(),
       possibleMatches: z.array(duplicateCandidateSchema),
-      recommendedAction: z.enum(["use_existing", "confirm_create", "block_create"]),
+      recommendedAction: z.enum(["use_existing", "confirm_create", "allow_create"]),
     }),
     message: z.string(),
   })

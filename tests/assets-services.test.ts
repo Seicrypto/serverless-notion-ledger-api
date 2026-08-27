@@ -7,12 +7,14 @@ import { OrganizationGamesRepository } from "../src/repositories/organization-ga
 import { OrganizationsRepository } from "../src/repositories/organizations-repository";
 import { UsersRepository } from "../src/repositories/users-repository";
 import { AssetDuplicateDetectionService } from "../src/services/assets/asset-duplicate-detection-service";
+import { AssetTrustLifecycleService } from "../src/services/assets/asset-trust-lifecycle-service";
 import { AssetLifecycleService } from "../src/services/assets/asset-lifecycle-service";
 import {
   AssetNormalizationService,
   normalizeAssetName,
 } from "../src/services/assets/asset-normalization-service";
 import { createTestDatabase } from "./support/test-database";
+import { EventLifecycleService } from "../src/services/ledger/event-lifecycle-service";
 
 test("asset normalization keeps multilingual text while normalizing spacing and punctuation", () => {
   const service = new AssetNormalizationService();
@@ -235,6 +237,7 @@ test("asset lifecycle creates organization-scoped assets and adds a primary alia
     assert.equal(result.asset.scope, "organization");
     assert.equal(result.asset.organization_id, organization.id);
     assert.equal(result.asset.normalized_name, "boss heart");
+    assert.equal(result.asset.status, "candidate");
     assert.ok(result.asset.asset_key.startsWith("lifecycle-game-boss-heart-"));
     assert.ok(result.primaryAlias);
     assert.equal(result.primaryAlias?.is_primary, 1);
@@ -421,6 +424,101 @@ test("asset lifecycle resolves organization or global default settlement units",
       gameId: game.id,
     });
     assert.equal(resolvedGlobal?.id, globalUnit.id);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("asset trust lifecycle promotes from candidate to org_verified and active based on usage", async () => {
+  const { cleanup, db } = await createTestDatabase();
+  try {
+    const users = new UsersRepository(db);
+    const organizations = new OrganizationsRepository(db);
+    const games = new GamesRepository(db);
+    const lifecycle = new AssetLifecycleService(db);
+    const trust = new AssetTrustLifecycleService(db);
+    const events = new EventLifecycleService(db);
+
+    const ownerOne = await users.create({
+      email: "assets-trust-owner-one@example.com",
+      passwordHash: "hash-assets-trust-owner-one",
+      status: "active",
+    });
+    const ownerTwo = await users.create({
+      email: "assets-trust-owner-two@example.com",
+      passwordHash: "hash-assets-trust-owner-two",
+      status: "active",
+    });
+    const ownerThree = await users.create({
+      email: "assets-trust-owner-three@example.com",
+      passwordHash: "hash-assets-trust-owner-three",
+      status: "active",
+    });
+
+    const organizationOne = await organizations.create({
+      createdByUserId: ownerOne.id,
+      name: "Trust Guild One",
+      slug: "trust-guild-one",
+    });
+    const organizationTwo = await organizations.create({
+      createdByUserId: ownerTwo.id,
+      name: "Trust Guild Two",
+      slug: "trust-guild-two",
+    });
+    const game = await games.create({
+      name: "Trust Game",
+      slug: "trust-game",
+    });
+
+    const created = await lifecycle.createAsset({
+      createdByUserId: ownerOne.id,
+      gameId: game.id,
+      name: "Moon Crystal",
+      organizationId: organizationOne.id,
+    });
+    assert.equal(created.kind, "created");
+    if (created.kind !== "created") {
+      return;
+    }
+
+    const assetId = created.asset.id;
+    assert.equal(created.asset.status, "candidate");
+
+    await events.createEvent({
+      assetId,
+      createdByUserId: ownerOne.id,
+      gameId: game.id,
+      occurredAt: "2026-08-27T01:00:00.000Z",
+      organizationId: organizationOne.id,
+      title: "Trust Event One",
+    });
+
+    let asset = await trust.recomputeStatus(assetId);
+    assert.equal(asset.status, "candidate");
+
+    await events.createEvent({
+      assetId,
+      createdByUserId: ownerThree.id,
+      gameId: game.id,
+      occurredAt: "2026-08-27T02:00:00.000Z",
+      organizationId: organizationOne.id,
+      title: "Trust Event Two",
+    });
+
+    asset = await trust.recomputeStatus(assetId);
+    assert.equal(asset.status, "org_verified");
+
+    await events.createEvent({
+      assetId,
+      createdByUserId: ownerTwo.id,
+      gameId: game.id,
+      occurredAt: "2026-08-27T03:00:00.000Z",
+      organizationId: organizationTwo.id,
+      title: "Trust Event Three",
+    });
+
+    asset = await trust.recomputeStatus(assetId);
+    assert.equal(asset.status, "active");
   } finally {
     await cleanup();
   }

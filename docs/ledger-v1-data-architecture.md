@@ -104,7 +104,7 @@ Recommended responsibilities:
 - store the display name and normalized name
 - record the owning game
 - support both global and organization-local scope
-- support merge and deprecation states
+- support trust, merge, and deprecation states
 - leave room for richer metadata later
 
 Recommended V1 shape:
@@ -113,98 +113,17 @@ Recommended V1 shape:
 - language-specific names and community aliases should live in a future `asset_aliases` structure
 - market or server-specific price context should live outside the asset identity layer
 
-#### Asset Scope
+Detailed asset strategy documents live in:
 
-Although most assets are shared at the game level, V1 should still preserve room for organization-scoped assets.
+- [docs/layer/assets-strategy/index.md](/Users/sei/Documents/GitHub/serverless-notion-ledger-api/docs/layer/assets-strategy/index.md)
 
-Recommended scope direction:
+That layer covers:
 
-- `global`
-- `organization`
-
-Typical global assets:
-
-- common item drops
-- common trade goods
-- game currencies
-- cross-organization shared item identities
-
-Typical organization-local assets:
-
-- guild reward points
-- internal attendance tokens
-- temporary local placeholders
-- organization-specific naming before a shared canonical asset is agreed on
-
-This means `organization_id` should not be interpreted as proving that the asset only exists in one guild. It is better treated as the local ownership context for a V1 asset record.
-
-#### Asset Aliases and Localization
-
-The asset table should remain the canonical identity layer.
-
-Language-specific and community-specific naming should be modeled separately in a future `asset_aliases` structure.
-
-Recommended future responsibilities for `asset_aliases`:
-
-- official names
-- localized names
-- community nicknames
-- legacy names
-- alternate spellings
-
-This helps the product support:
-
-- Chinese, English, Japanese, and other localized labels
-- different player communities calling the same asset by different names
-- duplicate checks that look beyond only the canonical name
-
-Recommended future alias properties:
-
-- `asset_id`
-- `alias`
-- `normalized_alias`
-- `locale`
-- `region_code`
-- `alias_type`
-- `is_primary`
-
-With that split:
-
-- `assets` answers "what is this asset"
-- `asset_aliases` answers "what do players call this asset"
-
-#### Asset Market Scope
-
-The asset identity layer should not directly encode all server or region pricing differences.
-
-Some games have:
-
-- one global market
-- one region per market
-- one server per market
-- multiple loosely connected clusters
-
-V1 should therefore reserve a future `market_scopes` concept instead of overloading `assets`.
-
-Recommended future `market_scopes` direction:
-
-- `global`
-- `region`
-- `server`
-- `cluster`
-
-This will later support:
-
-- per-server item prices
-- per-region price history
-- games that share names but do not share economies
-- games with a single global market without needing a special-case model
-
-With that split:
-
-- `assets` answers "what is the item or currency"
-- `market_scopes` answers "where is the economy context"
-- future pricing data answers "what was it worth there"
+- normalization rules
+- duplicate detection
+- trust lifecycle and controlled exposure
+- canonical identity, merge, and future split direction
+- category and icon support
 
 ### `events`
 

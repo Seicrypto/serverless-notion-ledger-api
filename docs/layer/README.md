@@ -1,8 +1,8 @@
-# Ledger State Machines
+# Layer Documents
 
-This folder contains the business-layer state machine drafts for Raid Ledger V1.
+This folder contains business-layer strategy documents for Raid Ledger V1.
 
-These documents are intentionally written from a workflow and operations perspective instead of a code-first perspective.
+These documents are intentionally written from a workflow, product, and operations perspective instead of a code-first perspective.
 
 Use them to define:
 
@@ -10,15 +10,35 @@ Use them to define:
 - when a record is allowed to move forward
 - what conditions block a transition
 - which downstream records are expected to exist
+- how cross-cutting product strategy modules interact
 
-## Files
+## Folders
+
+- `assets-strategy/`
+- state machine documents in this folder root
+
+## Assets Strategy
+
+The asset strategy documents live in:
+
+- [assets-strategy/index.md](/Users/sei/Documents/GitHub/serverless-notion-ledger-api/docs/layer/assets-strategy/index.md)
+
+Recommended reading order:
+
+1. `normalization.md`
+2. `duplicate-detection.md`
+3. `trust-lifecycle.md`
+4. `identity-resolution.md`
+5. `category-and-icons.md`
+
+## Ledger State Machines
+
+The ledger state machine documents are:
 
 - `event-state-machine.md`
 - `settlement-state-machine.md`
 - `allocation-state-machine.md`
 - `claim-state-machine.md`
-
-## Reading Order
 
 Recommended reading order:
 
@@ -33,7 +53,7 @@ That order matches the normal V1 operational flow:
 
 ## Scope
 
-These documents define business intent and lifecycle rules.
+These documents define business intent, lifecycle rules, and strategic boundaries.
 
 They do not define:
 

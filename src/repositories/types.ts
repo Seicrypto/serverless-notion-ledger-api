@@ -28,7 +28,12 @@ export type AssetType =
   | "service"
   | "other";
 export type AssetScope = "global" | "organization";
-export type AssetStatus = "active" | "merged" | "deprecated";
+export type AssetStatus =
+  | "candidate"
+  | "org_verified"
+  | "active"
+  | "merged"
+  | "deprecated";
 export type AssetAliasType =
   | "official"
   | "localized"

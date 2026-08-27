@@ -1,18 +1,20 @@
+import type { DatabaseClient } from "../../infrastructure/database/database-client";
 import { AssetAliasesRepository } from "../../repositories/asset-aliases-repository";
 import { AssetsRepository } from "../../repositories/assets-repository";
-import type { DatabaseClient } from "../../infrastructure/database/database-client";
 import type { AssetRecord } from "../../repositories/types";
+import { AssetNormalizationService } from "./asset-normalization-service";
+import { AssetTrustLifecycleService } from "./asset-trust-lifecycle-service";
 import type {
   AssetDuplicateCandidate,
   AssetDuplicateDetectionInput,
   AssetDuplicateDetectionResult,
 } from "./types";
-import { AssetNormalizationService } from "./asset-normalization-service";
 
 export class AssetDuplicateDetectionService {
   private readonly aliasesRepository: AssetAliasesRepository;
   private readonly assetsRepository: AssetsRepository;
   private readonly normalizationService: AssetNormalizationService;
+  private readonly trustLifecycleService: AssetTrustLifecycleService;
 
   constructor(
     private readonly db: DatabaseClient,
@@ -20,6 +22,7 @@ export class AssetDuplicateDetectionService {
       aliasesRepository?: AssetAliasesRepository;
       assetsRepository?: AssetsRepository;
       normalizationService?: AssetNormalizationService;
+      trustLifecycleService?: AssetTrustLifecycleService;
     } = {},
   ) {
     this.aliasesRepository =
@@ -27,6 +30,8 @@ export class AssetDuplicateDetectionService {
     this.assetsRepository = options.assetsRepository ?? new AssetsRepository(db);
     this.normalizationService =
       options.normalizationService ?? new AssetNormalizationService();
+    this.trustLifecycleService =
+      options.trustLifecycleService ?? new AssetTrustLifecycleService(db);
   }
 
   async detect(
@@ -60,7 +65,10 @@ export class AssetDuplicateDetectionService {
 
     for (const alias of exactAliasMatches) {
       const asset = await this.assetsRepository.findById(alias.asset_id);
-      if (!asset || !this.isUsableAsset(asset, input.gameId, input.organizationId)) {
+      if (
+        !asset ||
+        !this.isDirectlyUsableAsset(asset, input.gameId, input.organizationId)
+      ) {
         continue;
       }
 
@@ -87,7 +95,7 @@ export class AssetDuplicateDetectionService {
       normalizedName,
       possibleMatches,
       recommendedAction:
-        possibleMatches.length > 0 ? "confirm_create" : "block_create",
+        possibleMatches.length > 0 ? "confirm_create" : "allow_create",
     };
   }
 
@@ -102,7 +110,7 @@ export class AssetDuplicateDetectionService {
       candidates.find(
         (asset) =>
           asset.normalized_name === normalizedName &&
-          this.isUsableAsset(asset, gameId, organizationId),
+          this.isDirectlyUsableAsset(asset, gameId, organizationId),
       ) ?? null
     );
   }
@@ -113,13 +121,13 @@ export class AssetDuplicateDetectionService {
     organizationId?: number | null,
   ): Promise<AssetDuplicateCandidate[]> {
     const assets = await this.assetsRepository.listByGame(gameId);
-    const usableAssets = assets.filter((asset) =>
-      this.isUsableAsset(asset, gameId, organizationId),
+    const suggestibleAssets = assets.filter((asset) =>
+      this.isSuggestibleAsset(asset, gameId, organizationId),
     );
     const results = new Map<number, AssetDuplicateCandidate>();
     const queryTokens = tokenize(normalizedName);
 
-    for (const asset of usableAssets) {
+    for (const asset of suggestibleAssets) {
       if (asset.normalized_name === normalizedName) {
         continue;
       }
@@ -137,7 +145,7 @@ export class AssetDuplicateDetectionService {
       await this.aliasesRepository.searchByNormalizedAliasPrefix(normalizedName);
 
     for (const alias of aliasCandidates) {
-      const asset = usableAssets.find((candidate) => candidate.id === alias.asset_id);
+      const asset = suggestibleAssets.find((candidate) => candidate.id === alias.asset_id);
       if (!asset) {
         continue;
       }
@@ -156,7 +164,7 @@ export class AssetDuplicateDetectionService {
     return [...results.values()].slice(0, 10);
   }
 
-  private isUsableAsset(
+  private isDirectlyUsableAsset(
     asset: AssetRecord,
     gameId: number,
     organizationId?: number | null,
@@ -165,15 +173,25 @@ export class AssetDuplicateDetectionService {
       return false;
     }
 
-    if (asset.status === "merged") {
+    return this.trustLifecycleService.isVisibleForOrganization(
+      asset,
+      organizationId,
+    );
+  }
+
+  private isSuggestibleAsset(
+    asset: AssetRecord,
+    gameId: number,
+    organizationId?: number | null,
+  ): boolean {
+    if (asset.game_id !== gameId) {
       return false;
     }
 
-    if (asset.scope === "organization") {
-      return asset.organization_id === (organizationId ?? null);
-    }
-
-    return true;
+    return this.trustLifecycleService.isSuggestibleForOrganization(
+      asset,
+      organizationId,
+    );
   }
 }
 

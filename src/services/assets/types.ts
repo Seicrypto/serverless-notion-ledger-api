@@ -17,5 +17,5 @@ export interface AssetDuplicateDetectionResult {
   exactMatch: AssetDuplicateCandidate | null;
   normalizedName: string;
   possibleMatches: AssetDuplicateCandidate[];
-  recommendedAction: "block_create" | "confirm_create" | "use_existing";
+  recommendedAction: "allow_create" | "confirm_create" | "use_existing";
 }

@@ -8,7 +8,8 @@ import type {
   SettlementRecord,
   SettlementStatus,
 } from "../../repositories/types";
-import { AssetLifecycleService } from "../assets/asset-lifecycle-service";
+import { AssetIdentityResolutionService } from "../assets/asset-identity-resolution-service";
+import { AssetTrustLifecycleService } from "../assets/asset-trust-lifecycle-service";
 import type {
   CreateManagedSettlementInput,
   SettlementLifecyclePort,
@@ -67,6 +68,12 @@ export class SettlementLifecycleService implements SettlementLifecyclePort {
     if (created.event_id) {
       await new EventLifecycleService(this.db).syncStatusFromSettlements(
         created.event_id,
+      );
+    }
+
+    if (created.unit_asset_id) {
+      await new AssetTrustLifecycleService(this.db).recomputeStatus(
+        created.unit_asset_id,
       );
     }
 
@@ -243,7 +250,7 @@ export class SettlementLifecycleService implements SettlementLifecyclePort {
     organizationId: number;
   }): Promise<number | null> {
     if (input.gameId) {
-      const asset = await new AssetLifecycleService(
+      const asset = await new AssetIdentityResolutionService(
         this.db,
       ).resolveDefaultSettlementUnit({
         gameId: input.gameId,

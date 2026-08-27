@@ -1,10 +1,4 @@
-# Category Module Draft
-
-This document has been superseded by the asset strategy layer document:
-
-- [docs/layer/assets-strategy/category-and-icons.md](/Users/sei/Documents/GitHub/serverless-notion-ledger-api/docs/layer/assets-strategy/category-and-icons.md)
-
-Keep this file only as a compatibility entry point while older notes still reference it.
+# Asset Category And Icons
 
 This document outlines the V1 direction for category and icon support across assets, characters, and organization-level filtering workflows.
 
@@ -104,43 +98,6 @@ Categories answer:
 
 Keeping those responsibilities separate avoids turning the asset model into a catch-all structure and makes it easier to reuse the same category logic for characters and organization workflows.
 
-## Character Filtering Use Cases
-
-A category module is especially useful for large guild operations.
-
-Examples:
-
-- filter tanks, healers, and damage roles
-- filter by class
-- filter by raid team
-- filter by internal management group
-
-That can make member selection much faster than forcing users to scroll a long flat list of characters.
-
-## Asset Filtering Use Cases
-
-Examples:
-
-- weapons
-- armor
-- crafting materials
-- boss drops
-- event currencies
-- internal guild reward units
-
-These categories improve both user search speed and future dashboard readability.
-
-## Frontend Considerations
-
-The frontend should be able to consume category icon data without expensive runtime work.
-
-Recommended direction:
-
-- keep icon payloads lightweight
-- prefer SVG because it scales cleanly across device sizes
-- treat category display as a high-frequency interaction surface
-- avoid requiring expensive image post-processing during normal search and selection flows
-
 ## Future Direction
 
 Likely future expansions:
@@ -150,9 +107,3 @@ Likely future expansions:
 - category ordering and pinning
 - translated category labels
 - category analytics based on usage frequency
-
-## Document Scope
-
-This document defines the product direction for category and icon handling.
-
-It does not prescribe the exact route shape or implementation details for validation, upload handling, or frontend rendering code.
