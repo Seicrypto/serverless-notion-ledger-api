@@ -2202,6 +2202,464 @@
           "name"
         ]
       },
+      "OrganizationLedgerDashboardSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "name": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "slug"
+            ]
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "disbursementInProgressCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "disbursementNotStartedCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "revenueUnitBreakdown": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OrganizationLedgerDashboardRevenueBreakdown"
+                }
+              },
+              "settlementCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unsettledEventCount": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "disbursementInProgressCount",
+              "disbursementNotStartedCount",
+              "revenueUnitBreakdown",
+              "settlementCount",
+              "unsettledEventCount"
+            ]
+          }
+        },
+        "required": [
+          "generatedAt",
+          "organization",
+          "summary"
+        ]
+      },
+      "OrganizationLedgerDashboardRevenueBreakdown": {
+        "type": "object",
+        "properties": {
+          "grossAmountTotal": {
+            "type": "number",
+            "minimum": 0
+          },
+          "netAmountTotal": {
+            "type": "number",
+            "minimum": 0
+          },
+          "settlementCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unitAssetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "unitAssetName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "grossAmountTotal",
+          "netAmountTotal",
+          "settlementCount",
+          "unitAssetId",
+          "unitAssetName"
+        ]
+      },
+      "CharacterLedgerDashboardSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "summaries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CharacterLedgerDashboardSummaryItem"
+            }
+          }
+        },
+        "required": [
+          "generatedAt",
+          "summaries"
+        ]
+      },
+      "CharacterLedgerDashboardSummaryItem": {
+        "type": "object",
+        "properties": {
+          "characterId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "characterName": {
+            "type": "string"
+          },
+          "lastActivityAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payableSettlementCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "payableUnitBreakdown": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "amountTotal": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "settlementCount": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "unitAssetId": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "exclusiveMinimum": 0
+                },
+                "unitAssetName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "amountTotal",
+                "settlementCount",
+                "unitAssetId",
+                "unitAssetName"
+              ]
+            }
+          },
+          "pendingClaimCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "receivableSettlementCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "receivableUnitBreakdown": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "amountTotal": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "settlementCount": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "unitAssetId": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "exclusiveMinimum": 0
+                },
+                "unitAssetName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "amountTotal",
+                "settlementCount",
+                "unitAssetId",
+                "unitAssetName"
+              ]
+            }
+          }
+        },
+        "required": [
+          "characterId",
+          "characterName",
+          "lastActivityAt",
+          "payableSettlementCount",
+          "payableUnitBreakdown",
+          "pendingClaimCount",
+          "receivableSettlementCount",
+          "receivableUnitBreakdown"
+        ]
+      },
+      "QueryCharacterLedgerDashboardSummariesRequest": {
+        "type": "object",
+        "properties": {
+          "characterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "minItems": 1,
+            "maxItems": 10
+          }
+        },
+        "required": [
+          "characterIds"
+        ]
+      },
+      "CharacterLedgerDashboardDetailResponse": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "payableGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerDashboardDetailGroup"
+            }
+          },
+          "receivableGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerDashboardDetailGroup"
+            }
+          }
+        },
+        "required": [
+          "character",
+          "generatedAt",
+          "payableGroups",
+          "receivableGroups"
+        ]
+      },
+      "LedgerDashboardDetailGroup": {
+        "type": "object",
+        "properties": {
+          "counterpartyId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "counterpartyLabel": {
+            "type": "string"
+          },
+          "counterpartyType": {
+            "type": "string",
+            "enum": [
+              "character",
+              "org_treasury",
+              "external",
+              "custom"
+            ]
+          },
+          "settlements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerDashboardDetailSettlement"
+            }
+          },
+          "unitBreakdown": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "amountTotal": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "settlementCount": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "unitAssetId": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "exclusiveMinimum": 0
+                },
+                "unitAssetName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "amountTotal",
+                "settlementCount",
+                "unitAssetId",
+                "unitAssetName"
+              ]
+            }
+          }
+        },
+        "required": [
+          "counterpartyId",
+          "counterpartyLabel",
+          "counterpartyType",
+          "settlements",
+          "unitBreakdown"
+        ]
+      },
+      "LedgerDashboardDetailSettlement": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "claimStatus": {
+            "$ref": "#/components/schemas/LedgerDashboardClaimStatus"
+          },
+          "decidedAt": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "eventTitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settlementId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "settlementKey": {
+            "type": "string"
+          },
+          "settlementStatus": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "calculated",
+              "paying",
+              "paid",
+              "cancelled"
+            ]
+          },
+          "settlementTitle": {
+            "type": "string"
+          },
+          "settlementType": {
+            "type": "string",
+            "enum": [
+              "sale",
+              "bonus",
+              "salary",
+              "reward",
+              "subsidy",
+              "adjustment"
+            ]
+          },
+          "unitAssetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "unitAssetName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "claimStatus",
+          "decidedAt",
+          "eventId",
+          "eventTitle",
+          "settlementId",
+          "settlementKey",
+          "settlementStatus",
+          "settlementTitle",
+          "settlementType",
+          "unitAssetId",
+          "unitAssetName"
+        ]
+      },
+      "LedgerDashboardClaimStatus": {
+        "type": "string",
+        "enum": [
+          "none",
+          "partial",
+          "claimed",
+          "confirmed"
+        ]
+      },
       "LedgerEventListResponse": {
         "type": "object",
         "properties": {
@@ -6879,6 +7337,168 @@
                       "$ref": "#/components/schemas/CreateAssetOperationalConflictResponse"
                     }
                   ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/dashboard/summary": {
+      "get": {
+        "tags": [
+          "Ledger",
+          "Dashboard"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get organization ledger dashboard summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationLedgerDashboardSummaryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/dashboard/character-summaries/query": {
+      "post": {
+        "tags": [
+          "Ledger",
+          "Dashboard"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryCharacterLedgerDashboardSummariesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Query dashboard summaries for up to 10 characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterLedgerDashboardSummaryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization or character not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/dashboard/characters/{characterId}": {
+      "get": {
+        "tags": [
+          "Ledger",
+          "Dashboard"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "characterId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get detailed dashboard data for one character.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterLedgerDashboardDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization or character not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
