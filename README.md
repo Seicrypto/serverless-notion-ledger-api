@@ -71,3 +71,30 @@ You can also pass a custom output path:
 ```bash
 node scripts/run-ts-entry.mjs scripts/export-openapi.ts ./some/path/openapi.json
 ```
+
+## Wrangler Logs
+
+Use Wrangler tail to inspect Worker runtime logs during internal testing.
+
+Tail the deployed Worker:
+
+```bash
+npx wrangler tail
+```
+
+Tail a specific environment:
+
+```bash
+npx wrangler tail --env production
+```
+
+Readable JSON logs are useful when checking organization search behavior:
+
+```bash
+npx wrangler tail --format pretty
+```
+
+Current organization search logs include:
+
+- `[organizations.search.validation_failed]`
+- `[organizations.search.completed]`

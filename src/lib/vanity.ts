@@ -12,7 +12,15 @@ function normalizeVanitySeed(value: string | null | undefined, fallback: string)
     .replace(/^-+|-+$/g, "")
     .slice(0, 24);
 
-  return normalized || fallback;
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (/^[a-z]/.test(normalized)) {
+    return normalized;
+  }
+
+  return `${fallback}-${normalized}`.slice(0, 24).replace(/-+$/g, "");
 }
 
 function generateSeededVanity(value: string | null | undefined, fallback: string): string {

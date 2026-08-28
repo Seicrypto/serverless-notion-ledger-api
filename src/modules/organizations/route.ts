@@ -598,10 +598,19 @@ organizationsRouter.openapi(listGamesRoute, async (c) => {
 
 organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
   const parsed = listOrganizationsRoute.request.query.safeParse(c.req.query());
+  const requestId = ensureRequestId(c);
 
   if (!parsed.success) {
+    console.warn("[organizations.search.validation_failed]", {
+      issues: parsed.error.issues.map((issue) => ({
+        message: issue.message,
+        path: issue.path.map(String).join("."),
+      })),
+      query: c.req.query(),
+      requestId,
+    });
     return c.json(
-      validationErrorFromIssues(parsed.error.issues, "query", ensureRequestId(c)),
+      validationErrorFromIssues(parsed.error.issues, "query", requestId),
       422,
     );
   }
@@ -609,12 +618,13 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
   const db = new D1Client(c.env.APP_DB);
   const bindings: unknown[] = [];
   const whereClauses: string[] = [];
+  const searchTerm = parsed.data.q ?? parsed.data.displayName;
 
-  if (parsed.data.q) {
+  if (searchTerm) {
     whereClauses.push(
       `(o.name LIKE ? OR o.slug LIKE ? OR o.vanity LIKE ? OR g.name LIKE ? OR g.slug LIKE ?)`,
     );
-    const pattern = `%${parsed.data.q}%`;
+    const pattern = `%${searchTerm}%`;
     bindings.push(pattern, pattern, pattern, pattern, pattern);
   }
 
@@ -658,6 +668,30 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
   const organizations = await buildOrganizationSearchItems(db, pageRows);
+
+  if (organizations.length === 0) {
+    console.warn("[organizations.search.no_results]", {
+      gameId: parsed.data.gameId ?? null,
+      gameSlug: parsed.data.gameSlug ?? null,
+      limit,
+      offset,
+      query: searchTerm ?? null,
+      rawRowCount: rows.length,
+      requestId,
+    });
+  }
+
+  console.info("[organizations.search.completed]", {
+    gameId: parsed.data.gameId ?? null,
+    gameSlug: parsed.data.gameSlug ?? null,
+    hasMore,
+    limit,
+    matchedCount: organizations.length,
+    offset,
+    query: searchTerm ?? null,
+    requestId,
+    resultIds: organizations.map((organization) => organization.id),
+  });
 
   return c.json(
     {
