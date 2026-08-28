@@ -1,8 +1,15 @@
+import { createHash } from "node:crypto";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { D1Client } from "../../infrastructure/d1/d1-client";
+import { KvJsonRepository } from "../../infrastructure/kv/kv-json-repository";
+import { cacheKeys } from "../../lib/cache-keys";
 import { AppError, buildErrorResponseBody, ensureRequestId } from "../../lib/errors";
+import { getSessionCookie } from "../../lib/session-cookie";
+import { SnapshotCacheService } from "../../services/cache/snapshot-cache-service";
 import { GamesRepository } from "../../repositories/games-repository";
+import { OrganizationMembersRepository } from "../../repositories/organization-members-repository";
 import { OrganizationGamesRepository } from "../../repositories/organization-games-repository";
+import { OrganizationsRepository } from "../../repositories/organizations-repository";
 import type {
   AssetRecord,
   EventRecord,
@@ -16,9 +23,11 @@ import { AllocationLifecycleService } from "../../services/ledger/allocation-lif
 import { BatchClaimDispatchService } from "../../services/ledger/batch-claim-dispatch-service";
 import { ClaimLifecycleService } from "../../services/ledger/claim-lifecycle-service";
 import { ClaimableRecipientsQueryService } from "../../services/ledger/claimable-recipients-query-service";
+import { DashboardQueryService } from "../../services/ledger/dashboard-query-service";
 import { EventLifecycleService } from "../../services/ledger/event-lifecycle-service";
 import { SettlementDisbursementService } from "../../services/ledger/settlement-disbursement-service";
 import { SettlementLifecycleService } from "../../services/ledger/settlement-lifecycle-service";
+import { SessionAuthService } from "../../services/auth/session-auth-service";
 import type { AppBindings } from "../../types/hono";
 import {
   assertLedgerManager,
@@ -42,12 +51,15 @@ import {
   createLedgerEventRoute,
   createLedgerSettlementDisbursementRoute,
   createLedgerSettlementRoute,
+  getCharacterLedgerDashboardDetailRoute,
   getLedgerEventRoute,
   getLedgerClaimableRecipientRoute,
+  getOrganizationLedgerDashboardSummaryRoute,
   getLedgerSettlementDefaultsRoute,
   listLedgerClaimableRecipientsRoute,
   listLedgerEventsRoute,
   listLedgerSettlementsRoute,
+  queryCharacterLedgerDashboardSummariesRoute,
   updateLedgerAllocationStatusRoute,
   updateLedgerClaimStatusRoute,
   updateLedgerEventStatusRoute,
@@ -84,6 +96,18 @@ function validationErrorFromIssues(
     requestId,
   };
 }
+
+type PublicOrganizationContext = {
+  id: number;
+  name: string;
+  slug: string;
+  vanity: string | null;
+};
+
+type OrganizationViewer = {
+  isMember: boolean;
+  userId: number | null;
+};
 
 organizationLedgerRouter.use(
   "/{organization}/ledger/events",
@@ -137,6 +161,120 @@ organizationLedgerRouter.use(
   "/{organization}/ledger/claims/{claimId}/status",
   requireLedgerManager,
 );
+
+organizationLedgerRouter.openapi(getOrganizationLedgerDashboardSummaryRoute, async (c) => {
+  try {
+    const organization = await resolvePublicOrganization(c);
+    const viewer = await resolveOrganizationViewer(c, organization.id);
+    const cacheKey = cacheKeys.ledgerQuery(
+      String(organization.id),
+      `dashboard-summary:${getThirtyMinuteBucket()}`,
+    );
+
+    const payload = await readThroughDashboardSnapshot(
+      c,
+      cacheKey,
+      viewer.isMember,
+      () =>
+        new DashboardQueryService(new D1Client(c.env.APP_DB)).getOrganizationSummary({
+          organization,
+        }),
+    );
+
+    return c.json(payload, 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(queryCharacterLedgerDashboardSummariesRoute, async (c) => {
+  const schema =
+    queryCharacterLedgerDashboardSummariesRoute.request.body.content["application/json"].schema;
+  const parsed = schema.safeParse(await c.req.json());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = await resolvePublicOrganization(c);
+    const viewer = await resolveOrganizationViewer(c, organization.id);
+    const characterHash = createHash("sha1")
+      .update(parsed.data.characterIds.join(","))
+      .digest("hex")
+      .slice(0, 16);
+    const cacheKey = cacheKeys.ledgerQuery(
+      String(organization.id),
+      `dashboard-character-summaries:${characterHash}:${getThirtyMinuteBucket()}`,
+    );
+
+    const payload = await readThroughDashboardSnapshot(
+      c,
+      cacheKey,
+      viewer.isMember,
+      () =>
+        new DashboardQueryService(new D1Client(c.env.APP_DB)).queryCharacterSummaries({
+          characterIds: parsed.data.characterIds,
+          organizationId: organization.id,
+        }),
+    );
+
+    return c.json(payload, 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(getCharacterLedgerDashboardDetailRoute, async (c) => {
+  const parsed = getCharacterLedgerDashboardDetailRoute.request.params.safeParse(
+    c.req.param(),
+  );
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c), "params"),
+      422,
+    );
+  }
+
+  try {
+    const organization = await resolvePublicOrganization(c);
+    const viewer = await resolveOrganizationViewer(c, organization.id);
+    const cacheKey = cacheKeys.ledgerQuery(
+      String(organization.id),
+      `dashboard-character-detail:${parsed.data.characterId}:${getThirtyMinuteBucket()}`,
+    );
+
+    const payload = await readThroughDashboardSnapshot(
+      c,
+      cacheKey,
+      viewer.isMember,
+      () =>
+        new DashboardQueryService(new D1Client(c.env.APP_DB)).getCharacterDetail({
+          characterId: parsed.data.characterId,
+          organizationId: organization.id,
+        }),
+    );
+
+    return c.json(payload, 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 404);
+    }
+
+    throw error;
+  }
+});
 
 organizationLedgerRouter.openapi(listLedgerEventsRoute, async (c) => {
   const parsed = listLedgerEventsRoute.request.query.safeParse(c.req.query());
@@ -1052,6 +1190,89 @@ function mapEventStatusGroup(
     default:
       return ["open", "ready_for_settlement", "partially_settled"];
   }
+}
+
+function isNumericIdentifier(value: string): boolean {
+  return /^\d+$/.test(value);
+}
+
+async function resolvePublicOrganization(c: {
+  env: AppBindings["Bindings"];
+  req: { param(name: string): string };
+}): Promise<PublicOrganizationContext> {
+  const identifier = c.req.param("organization");
+  const repository = new OrganizationsRepository(new D1Client(c.env.APP_DB));
+
+  const organization = isNumericIdentifier(identifier)
+    ? await repository.findById(Number(identifier))
+    : (await repository.findByVanity(identifier)) ?? (await repository.findBySlug(identifier));
+
+  if (!organization) {
+    throw new AppError("Organization not found", 404, {
+      code: "ORGANIZATION_NOT_FOUND",
+    });
+  }
+
+  return {
+    id: organization.id,
+    name: organization.name,
+    slug: organization.slug,
+    vanity: organization.vanity,
+  };
+}
+
+async function resolveOrganizationViewer(
+  c: Parameters<typeof organizationLedgerRouter.openapi>[1] extends never ? never : any,
+  organizationId: number,
+): Promise<OrganizationViewer> {
+  const token = getSessionCookie(c);
+  if (!token) {
+    return { isMember: false, userId: null };
+  }
+
+  try {
+    const session = await new SessionAuthService(c.env).requireActiveUser(token);
+    const membership = await new OrganizationMembersRepository(
+      new D1Client(c.env.APP_DB),
+    ).findByOrganizationAndUser(organizationId, session.user.id);
+
+    return {
+      isMember: membership?.status === "active",
+      userId: session.user.id,
+    };
+  } catch {
+    return { isMember: false, userId: null };
+  }
+}
+
+function getSnapshotCacheService(env: AppBindings["Bindings"]) {
+  return new SnapshotCacheService(new KvJsonRepository(env.SNAPSHOT_CACHE));
+}
+
+function getThirtyMinuteBucket(date = new Date()): string {
+  const bucket = new Date(date);
+  bucket.setUTCMinutes(bucket.getUTCMinutes() < 30 ? 0 : 30, 0, 0);
+  return bucket.toISOString().slice(0, 16);
+}
+
+async function readThroughDashboardSnapshot<T>(
+  c: { env: AppBindings["Bindings"] },
+  cacheKey: string,
+  bypassRead: boolean,
+  loader: () => Promise<T>,
+): Promise<T> {
+  const cache = getSnapshotCacheService(c.env);
+
+  if (!bypassRead) {
+    const cached = await cache.get<T>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  const payload = await loader();
+  await cache.put(cacheKey, payload, cache.ttl.publicDashboardSnapshot);
+  return payload;
 }
 
 function toEventResponse(event: EventRecord) {

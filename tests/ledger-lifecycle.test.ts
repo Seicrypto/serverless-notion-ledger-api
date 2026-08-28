@@ -3,6 +3,7 @@ import test from "node:test";
 import { AllocationLifecycleService } from "../src/services/ledger/allocation-lifecycle-service";
 import { ClaimLifecycleService } from "../src/services/ledger/claim-lifecycle-service";
 import { EventLifecycleService } from "../src/services/ledger/event-lifecycle-service";
+import { DashboardQueryService } from "../src/services/ledger/dashboard-query-service";
 import { SettlementDisbursementService } from "../src/services/ledger/settlement-disbursement-service";
 import { SettlementLifecycleService } from "../src/services/ledger/settlement-lifecycle-service";
 import { ConflictError } from "../src/lib/errors";
@@ -378,6 +379,149 @@ test("settlement disbursement can match existing allocations and reject amount m
     assert.equal(result.allocations.length, 2);
     assert.equal(result.claims.length, 2);
     assert.equal(result.settlement.status, "paying");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("dashboard summary counts unsettled events and disbursement states", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+    const allocationService = new AllocationLifecycleService(fixture.db);
+    const claimService = new ClaimLifecycleService(fixture.db);
+    const dashboardService = new DashboardQueryService(fixture.db);
+
+    const openEvent = await eventService.createEvent({
+      eventKey: "evt-dashboard-open-1",
+      occurredAt: "2026-08-27T09:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Open Dashboard Event",
+    });
+    assert.equal(openEvent.status, "open");
+
+    const readyEvent = await eventService.createEvent({
+      eventKey: "evt-dashboard-ready-1",
+      occurredAt: "2026-08-27T10:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Ready Dashboard Event",
+    });
+    await eventService.markReadyForSettlement(readyEvent.id);
+
+    const settlementOne = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-27T11:00:00.000Z",
+      eventId: readyEvent.id,
+      grossAmount: 1000,
+      netAmount: 1000,
+      organizationId: fixture.organization.id,
+      payerRef: String(fixture.characterOne.id),
+      payerType: "character",
+      settlementKey: "st-dashboard-1",
+      title: "Dashboard Settlement One",
+    });
+    await settlementService.markCalculated(settlementOne.id);
+    const allocationOne = await allocationService.createPendingAllocation({
+      amount: 1000,
+      characterId: fixture.characterTwo.id,
+      settlementId: settlementOne.id,
+    });
+    await claimService.recordClaim({
+      amount: 1000,
+      claimedAt: "2026-08-27T11:30:00.000Z",
+      claimedByCharacterId: fixture.characterTwo.id,
+      settlementAllocationId: allocationOne.id,
+    });
+
+    const settlementTwo = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-27T12:00:00.000Z",
+      grossAmount: 500,
+      netAmount: 500,
+      organizationId: fixture.organization.id,
+      payerRef: String(fixture.characterOne.id),
+      payerType: "character",
+      settlementKey: "st-dashboard-2",
+      title: "Dashboard Settlement Two",
+    });
+    await settlementService.markCalculated(settlementTwo.id);
+
+    const summary = await dashboardService.getOrganizationSummary({
+      organization: {
+        id: fixture.organization.id,
+        name: fixture.organization.name,
+        slug: fixture.organization.slug,
+      },
+    });
+
+    assert.equal(summary.summary.settlementCount, 2);
+    assert.equal(summary.summary.unsettledEventCount, 2);
+    assert.equal(summary.summary.disbursementInProgressCount, 1);
+    assert.equal(summary.summary.disbursementNotStartedCount, 1);
+    assert.equal(summary.summary.revenueUnitBreakdown.length, 2);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("dashboard character summary and detail expose receivable and payable views", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+    const allocationService = new AllocationLifecycleService(fixture.db);
+    const dashboardService = new DashboardQueryService(fixture.db);
+
+    const event = await eventService.createEvent({
+      eventKey: "evt-dashboard-character-1",
+      occurredAt: "2026-08-27T13:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Dashboard Character Event",
+    });
+    await eventService.markReadyForSettlement(event.id);
+
+    const settlement = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-27T14:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 800,
+      netAmount: 800,
+      organizationId: fixture.organization.id,
+      payerRef: String(fixture.characterOne.id),
+      payerType: "character",
+      settlementKey: "st-dashboard-character-1",
+      title: "Dashboard Character Settlement",
+    });
+    await settlementService.markCalculated(settlement.id);
+
+    await allocationService.createPendingAllocation({
+      amount: 800,
+      characterId: fixture.characterTwo.id,
+      settlementId: settlement.id,
+    });
+
+    const summaries = await dashboardService.queryCharacterSummaries({
+      characterIds: [fixture.characterOne.id, fixture.characterTwo.id],
+      organizationId: fixture.organization.id,
+    });
+
+    const payerSummary = summaries.summaries.find(
+      (item) => item.characterId === fixture.characterOne.id,
+    );
+    const receiverSummary = summaries.summaries.find(
+      (item) => item.characterId === fixture.characterTwo.id,
+    );
+
+    assert.equal(payerSummary?.payableSettlementCount, 1);
+    assert.equal(receiverSummary?.receivableSettlementCount, 1);
+    assert.equal(receiverSummary?.pendingClaimCount, 1);
+
+    const detail = await dashboardService.getCharacterDetail({
+      characterId: fixture.characterTwo.id,
+      organizationId: fixture.organization.id,
+    });
+
+    assert.equal(detail.receivableGroups.length, 1);
+    assert.equal(detail.receivableGroups[0]?.counterpartyType, "character");
+    assert.equal(detail.receivableGroups[0]?.settlements[0]?.claimStatus, "none");
   } finally {
     await fixture.cleanup();
   }

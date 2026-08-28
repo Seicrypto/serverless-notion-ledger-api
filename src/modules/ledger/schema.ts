@@ -250,6 +250,10 @@ const claimResponseSchema = z
   })
   .openapi("LedgerClaimResponse");
 
+const dashboardClaimStatusSchema = z
+  .enum(["none", "partial", "claimed", "confirmed"])
+  .openapi("LedgerDashboardClaimStatus");
+
 const paginationSchema = z
   .object({
     hasMore: z.boolean(),
@@ -497,6 +501,127 @@ const settlementDisbursementResponseSchema = z
   })
   .openapi("LedgerSettlementDisbursementResponse");
 
+const dashboardRevenueBreakdownSchema = z
+  .object({
+    grossAmountTotal: z.number().nonnegative(),
+    netAmountTotal: z.number().nonnegative(),
+    settlementCount: z.number().int().nonnegative(),
+    unitAssetId: z.number().int().positive().nullable(),
+    unitAssetName: z.string().nullable(),
+  })
+  .openapi("OrganizationLedgerDashboardRevenueBreakdown");
+
+const organizationLedgerDashboardSummaryResponseSchema = z
+  .object({
+    generatedAt: z.string(),
+    organization: z.object({
+      id: z.number().int().positive(),
+      name: z.string(),
+      slug: z.string(),
+    }),
+    summary: z.object({
+      disbursementInProgressCount: z.number().int().nonnegative(),
+      disbursementNotStartedCount: z.number().int().nonnegative(),
+      revenueUnitBreakdown: z.array(dashboardRevenueBreakdownSchema),
+      settlementCount: z.number().int().nonnegative(),
+      unsettledEventCount: z.number().int().nonnegative(),
+    }),
+  })
+  .openapi("OrganizationLedgerDashboardSummaryResponse");
+
+const queryCharacterLedgerDashboardSummariesRequestSchema = z
+  .object({
+    characterIds: z.array(z.number().int().positive()).min(1).max(10),
+  })
+  .openapi("QueryCharacterLedgerDashboardSummariesRequest");
+
+const characterLedgerDashboardSummaryItemSchema = z
+  .object({
+    characterId: z.number().int().positive(),
+    characterName: z.string(),
+    lastActivityAt: z.string().nullable(),
+    payableSettlementCount: z.number().int().nonnegative(),
+    payableUnitBreakdown: z.array(
+      z.object({
+        amountTotal: z.number().nonnegative(),
+        settlementCount: z.number().int().nonnegative(),
+        unitAssetId: z.number().int().positive().nullable(),
+        unitAssetName: z.string().nullable(),
+      }),
+    ),
+    pendingClaimCount: z.number().int().nonnegative(),
+    receivableSettlementCount: z.number().int().nonnegative(),
+    receivableUnitBreakdown: z.array(
+      z.object({
+        amountTotal: z.number().nonnegative(),
+        settlementCount: z.number().int().nonnegative(),
+        unitAssetId: z.number().int().positive().nullable(),
+        unitAssetName: z.string().nullable(),
+      }),
+    ),
+  })
+  .openapi("CharacterLedgerDashboardSummaryItem");
+
+const characterLedgerDashboardSummaryResponseSchema = z
+  .object({
+    generatedAt: z.string(),
+    summaries: z.array(characterLedgerDashboardSummaryItemSchema),
+  })
+  .openapi("CharacterLedgerDashboardSummaryResponse");
+
+const dashboardCharacterParamSchema = z
+  .object({
+    characterId: z.coerce.number().int().positive(),
+    organization: z.string().trim().min(1),
+  })
+  .openapi("LedgerDashboardCharacterParam");
+
+const dashboardDetailSettlementSchema = z
+  .object({
+    amount: z.number().nonnegative(),
+    claimStatus: dashboardClaimStatusSchema,
+    decidedAt: z.string(),
+    eventId: z.number().int().positive().nullable(),
+    eventTitle: z.string().nullable(),
+    settlementId: z.number().int().positive(),
+    settlementKey: z.string(),
+    settlementStatus: z.enum(["draft", "calculated", "paying", "paid", "cancelled"]),
+    settlementTitle: z.string(),
+    settlementType: z.enum(["sale", "bonus", "salary", "reward", "subsidy", "adjustment"]),
+    unitAssetId: z.number().int().positive().nullable(),
+    unitAssetName: z.string().nullable(),
+  })
+  .openapi("LedgerDashboardDetailSettlement");
+
+const dashboardDetailGroupSchema = z
+  .object({
+    counterpartyId: z.number().int().positive().nullable(),
+    counterpartyLabel: z.string(),
+    counterpartyType: z.enum(["character", "org_treasury", "external", "custom"]),
+    settlements: z.array(dashboardDetailSettlementSchema),
+    unitBreakdown: z.array(
+      z.object({
+        amountTotal: z.number().nonnegative(),
+        settlementCount: z.number().int().nonnegative(),
+        unitAssetId: z.number().int().positive().nullable(),
+        unitAssetName: z.string().nullable(),
+      }),
+    ),
+  })
+  .openapi("LedgerDashboardDetailGroup");
+
+const characterLedgerDashboardDetailResponseSchema = z
+  .object({
+    character: z.object({
+      id: z.number().int().positive(),
+      name: z.string(),
+    }),
+    generatedAt: z.string(),
+    payableGroups: z.array(dashboardDetailGroupSchema),
+    receivableGroups: z.array(dashboardDetailGroupSchema),
+  })
+  .openapi("CharacterLedgerDashboardDetailResponse");
+
 export const createLedgerEventRoute = createRoute({
   method: "post",
   path: "/{organization}/ledger/events",
@@ -556,6 +681,68 @@ export const getLedgerEventRoute = createRoute({
     401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
     404: { content: { "application/json": { schema: errorSchema } }, description: "Event not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const getOrganizationLedgerDashboardSummaryRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/dashboard/summary",
+  tags: ["Ledger", "Dashboard"],
+  request: {
+    params: organizationParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": { schema: organizationLedgerDashboardSummaryResponseSchema },
+      },
+      description: "Get organization ledger dashboard summary.",
+    },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization not found." },
+  },
+});
+
+export const queryCharacterLedgerDashboardSummariesRoute = createRoute({
+  method: "post",
+  path: "/{organization}/ledger/dashboard/character-summaries/query",
+  tags: ["Ledger", "Dashboard"],
+  request: {
+    params: organizationParamSchema,
+    body: {
+      content: {
+        "application/json": { schema: queryCharacterLedgerDashboardSummariesRequestSchema },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": { schema: characterLedgerDashboardSummaryResponseSchema },
+      },
+      description: "Query dashboard summaries for up to 10 characters.",
+    },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization or character not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const getCharacterLedgerDashboardDetailRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/dashboard/characters/{characterId}",
+  tags: ["Ledger", "Dashboard"],
+  request: {
+    params: dashboardCharacterParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": { schema: characterLedgerDashboardDetailResponseSchema },
+      },
+      description: "Get detailed dashboard data for one character.",
+    },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization or character not found." },
     422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
   },
 });
