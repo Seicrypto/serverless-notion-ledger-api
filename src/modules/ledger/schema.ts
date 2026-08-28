@@ -410,6 +410,25 @@ export const listLedgerEventsRoute = createRoute({
   },
 });
 
+export const getLedgerEventRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/events/{eventId}",
+  tags: ["Ledger", "Events"],
+  request: {
+    params: eventIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: eventResponseSchema } },
+      description: "Get a single organization ledger event.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Event not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
 export const updateLedgerEventStatusRoute = createRoute({
   method: "patch",
   path: "/{organization}/ledger/events/{eventId}/status",

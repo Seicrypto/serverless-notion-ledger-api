@@ -37,6 +37,7 @@ import {
   createLedgerClaimRoute,
   createLedgerEventRoute,
   createLedgerSettlementRoute,
+  getLedgerEventRoute,
   getLedgerSettlementDefaultsRoute,
   listLedgerEventsRoute,
   listLedgerSettlementsRoute,
@@ -202,6 +203,36 @@ organizationLedgerRouter.openapi(listLedgerEventsRoute, async (c) => {
           limit,
           offset,
         },
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(getLedgerEventRoute, async (c) => {
+  const parsed = getLedgerEventRoute.request.params.safeParse(c.req.param());
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c), "params"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const db = new D1Client(c.env.APP_DB);
+    const event = await requireLedgerEvent(db, parsed.data.eventId, organization.id);
+
+    return c.json(
+      {
+        event: toEventResponse(event),
+        message: "Event retrieved successfully.",
       },
       200,
     );
