@@ -40,6 +40,13 @@ export class ClaimLifecycleService implements ClaimLifecyclePort {
       );
     }
 
+    const existingClaims = await repository.listByAllocation(allocation.id);
+    if (existingClaims.some((claim) => claim.status !== "voided")) {
+      throw new ConflictError("Allocation already has a recorded or confirmed claim", {
+        code: "ALLOCATION_CLAIM_ALREADY_EXISTS",
+      });
+    }
+
     if (settlement.status === "calculated") {
       await new SettlementLifecycleService(this.db).startPaying(settlement.id);
     }

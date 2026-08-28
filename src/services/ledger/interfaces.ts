@@ -9,6 +9,7 @@ import type {
   SettlementAllocationRecord,
   SettlementClaimRecord,
   SettlementClaimStatus,
+  SettlementClaimMethod,
   SettlementRecord,
   SettlementStatus,
 } from "../../repositories/types";
@@ -72,4 +73,26 @@ export interface ClaimLifecyclePort {
     nextStatus: SettlementClaimStatus,
     actedByUserId?: number | null,
   ): Promise<SettlementClaimRecord>;
+}
+
+export interface SettlementDisbursementPort {
+  disburseSettlement(input: {
+    claimedAt: string;
+    items: Array<{
+      amount: number;
+      characterId: number;
+      ratio?: number | null;
+      weight?: number;
+    }>;
+    method?: SettlementClaimMethod;
+    notes?: string | null;
+    organizationId: number;
+    settlementId: number;
+  }): Promise<{
+    allocationMode: "created" | "matched";
+    allocations: SettlementAllocationRecord[];
+    claims: SettlementClaimRecord[];
+    settlement: SettlementRecord;
+    settlementStatusChanged: boolean;
+  }>;
 }

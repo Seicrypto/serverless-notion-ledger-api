@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { D1Client } from "../../infrastructure/d1/d1-client";
+import type { DatabaseClient } from "../../infrastructure/database/database-client";
 import { AppError, ForbiddenError } from "../../lib/errors";
 import { CharactersRepository } from "../../repositories/characters-repository";
 import { EventsRepository } from "../../repositories/events-repository";
@@ -68,7 +68,7 @@ export function assertLedgerManager(membership: OrganizationMemberRecord) {
 }
 
 export async function requireLedgerEvent(
-  db: D1Client,
+  db: DatabaseClient,
   eventId: number,
   organizationId: number,
 ): Promise<EventRecord> {
@@ -83,7 +83,7 @@ export async function requireLedgerEvent(
 }
 
 export async function requireLedgerSettlement(
-  db: D1Client,
+  db: DatabaseClient,
   settlementId: number,
   organizationId: number,
 ): Promise<SettlementRecord> {
@@ -98,7 +98,7 @@ export async function requireLedgerSettlement(
 }
 
 export async function requireLedgerAllocation(
-  db: D1Client,
+  db: DatabaseClient,
   allocationId: number,
   organizationId: number,
 ): Promise<SettlementAllocationRecord> {
@@ -116,7 +116,7 @@ export async function requireLedgerAllocation(
 }
 
 export async function requireLedgerClaim(
-  db: D1Client,
+  db: DatabaseClient,
   claimId: number,
   organizationId: number,
 ): Promise<{
@@ -140,7 +140,7 @@ export async function requireLedgerClaim(
 }
 
 export async function requireLedgerCharacter(
-  db: D1Client,
+  db: DatabaseClient,
   characterId: number,
   organizationId: number,
 ): Promise<CharacterRecord> {

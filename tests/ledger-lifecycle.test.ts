@@ -3,8 +3,11 @@ import test from "node:test";
 import { AllocationLifecycleService } from "../src/services/ledger/allocation-lifecycle-service";
 import { ClaimLifecycleService } from "../src/services/ledger/claim-lifecycle-service";
 import { EventLifecycleService } from "../src/services/ledger/event-lifecycle-service";
+import { SettlementDisbursementService } from "../src/services/ledger/settlement-disbursement-service";
 import { SettlementLifecycleService } from "../src/services/ledger/settlement-lifecycle-service";
 import { ConflictError } from "../src/lib/errors";
+import { SettlementAllocationsRepository } from "../src/repositories/settlement-allocations-repository";
+import { SettlementClaimsRepository } from "../src/repositories/settlement-claims-repository";
 import { AssetsRepository } from "../src/repositories/assets-repository";
 import { CharactersRepository } from "../src/repositories/characters-repository";
 import { GamesRepository } from "../src/repositories/games-repository";
@@ -239,6 +242,142 @@ test("claim confirmations drive allocation, settlement, and event completion", a
 
     const settledEvent = await eventService.syncStatusFromSettlements(event.id);
     assert.equal(settledEvent.status, "settled");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("settlement disbursement can create allocations and recorded claims from draft", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+    const disbursementService = new SettlementDisbursementService(fixture.db);
+    const allocationsRepository = new SettlementAllocationsRepository(fixture.db);
+    const claimsRepository = new SettlementClaimsRepository(fixture.db);
+
+    const event = await eventService.createEvent({
+      eventKey: "evt-disburse-create-1",
+      occurredAt: "2026-08-27T12:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Disburse Create Event",
+    });
+    await eventService.markReadyForSettlement(event.id);
+
+    const settlement = await settlementService.createDraftSettlement({
+      allocationMode: "equal",
+      decidedAt: "2026-08-27T13:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 1000,
+      netAmount: 1000,
+      organizationId: fixture.organization.id,
+      settlementKey: "st-disburse-create-1",
+      title: "Disburse Create Settlement",
+    });
+
+    const result = await disbursementService.disburseSettlement({
+      claimedAt: "2026-08-27T14:00:00.000Z",
+      items: [
+        { amount: 500, characterId: fixture.characterOne.id, weight: 1 },
+        { amount: 500, characterId: fixture.characterTwo.id, weight: 1 },
+      ],
+      method: "manual",
+      notes: "first payout batch",
+      organizationId: fixture.organization.id,
+      settlementId: settlement.id,
+    });
+
+    assert.equal(result.allocationMode, "created");
+    assert.equal(result.allocations.length, 2);
+    assert.equal(result.claims.length, 2);
+    assert.equal(result.claims[0]?.status, "recorded");
+    assert.equal(result.settlement.status, "paying");
+    assert.equal(result.settlementStatusChanged, true);
+
+    const allocations = await allocationsRepository.listBySettlement(settlement.id);
+    assert.equal(allocations.length, 2);
+
+    const claimsOne = await claimsRepository.listByAllocation(result.allocations[0]!.id);
+    const claimsTwo = await claimsRepository.listByAllocation(result.allocations[1]!.id);
+    assert.equal(claimsOne.length, 1);
+    assert.equal(claimsTwo.length, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("settlement disbursement can match existing allocations and reject amount mismatches", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+    const allocationService = new AllocationLifecycleService(fixture.db);
+    const disbursementService = new SettlementDisbursementService(fixture.db);
+
+    const event = await eventService.createEvent({
+      eventKey: "evt-disburse-match-1",
+      occurredAt: "2026-08-27T15:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Disburse Match Event",
+    });
+    await eventService.markReadyForSettlement(event.id);
+
+    const settlement = await settlementService.createDraftSettlement({
+      allocationMode: "manual",
+      decidedAt: "2026-08-27T16:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 900,
+      netAmount: 900,
+      organizationId: fixture.organization.id,
+      settlementKey: "st-disburse-match-1",
+      title: "Disburse Match Settlement",
+    });
+    await settlementService.markCalculated(settlement.id);
+
+    await allocationService.createPendingAllocation({
+      amount: 400,
+      characterId: fixture.characterOne.id,
+      settlementId: settlement.id,
+      weight: 1,
+    });
+    await allocationService.createPendingAllocation({
+      amount: 500,
+      characterId: fixture.characterTwo.id,
+      settlementId: settlement.id,
+      weight: 1,
+    });
+
+    await assert.rejects(
+      () =>
+        disbursementService.disburseSettlement({
+          claimedAt: "2026-08-27T17:00:00.000Z",
+          items: [
+            { amount: 401, characterId: fixture.characterOne.id, weight: 1 },
+            { amount: 500, characterId: fixture.characterTwo.id, weight: 1 },
+          ],
+          organizationId: fixture.organization.id,
+          settlementId: settlement.id,
+        }),
+      (error: unknown) =>
+        error instanceof ConflictError &&
+        error.code === "SETTLEMENT_DISBURSE_AMOUNT_MISMATCH",
+    );
+
+    const result = await disbursementService.disburseSettlement({
+      claimedAt: "2026-08-27T17:30:00.000Z",
+      items: [
+        { amount: 400, characterId: fixture.characterOne.id, weight: 1 },
+        { amount: 500, characterId: fixture.characterTwo.id, weight: 1 },
+      ],
+      method: "trade",
+      organizationId: fixture.organization.id,
+      settlementId: settlement.id,
+    });
+
+    assert.equal(result.allocationMode, "matched");
+    assert.equal(result.allocations.length, 2);
+    assert.equal(result.claims.length, 2);
+    assert.equal(result.settlement.status, "paying");
   } finally {
     await fixture.cleanup();
   }

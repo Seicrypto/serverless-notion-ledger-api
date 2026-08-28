@@ -2375,6 +2375,280 @@
           "message"
         ]
       },
+      "LedgerClaimableRecipientSummaryListResponse": {
+        "type": "object",
+        "properties": {
+          "recipients": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerClaimableRecipientSummary"
+            }
+          }
+        },
+        "required": [
+          "recipients"
+        ]
+      },
+      "LedgerClaimableRecipientSummary": {
+        "type": "object",
+        "properties": {
+          "characterId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "characterName": {
+            "type": "string"
+          },
+          "hasSiblingCharactersPending": {
+            "type": "boolean"
+          },
+          "memberDisplayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "memberUserId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "pendingAllocationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pendingClaimAmountTotal": {
+            "type": "number",
+            "minimum": 0
+          },
+          "pendingUnitBreakdown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerClaimableUnitBreakdown"
+            }
+          }
+        },
+        "required": [
+          "characterId",
+          "characterName",
+          "hasSiblingCharactersPending",
+          "memberDisplayName",
+          "memberUserId",
+          "pendingAllocationCount",
+          "pendingClaimAmountTotal",
+          "pendingUnitBreakdown"
+        ]
+      },
+      "LedgerClaimableUnitBreakdown": {
+        "type": "object",
+        "properties": {
+          "allocationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "amountTotal": {
+            "type": "number",
+            "minimum": 0
+          },
+          "unitAssetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "unitAssetName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "allocationCount",
+          "amountTotal",
+          "unitAssetId",
+          "unitAssetName"
+        ]
+      },
+      "LedgerClaimableRecipientDetailResponse": {
+        "type": "object",
+        "properties": {
+          "allocations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerClaimableRecipientAllocation"
+            }
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/LedgerClaimableRecipientSummary"
+          },
+          "siblingCharacters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerClaimableRecipientSummary"
+            }
+          },
+          "unitBreakdown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerClaimableUnitBreakdown"
+            }
+          }
+        },
+        "required": [
+          "allocations",
+          "recipient",
+          "siblingCharacters",
+          "unitBreakdown"
+        ]
+      },
+      "LedgerClaimableRecipientAllocation": {
+        "type": "object",
+        "properties": {
+          "allocationId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "eventId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "eventKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eventOccurredAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eventStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "open",
+              "ready_for_settlement",
+              "partially_settled",
+              "settled",
+              "cancelled",
+              null
+            ]
+          },
+          "eventTitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eventType": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "loot",
+              "raid",
+              "activity",
+              "bonus",
+              "salary",
+              "guild_event",
+              "other",
+              null
+            ]
+          },
+          "ratio": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "settlementDecidedAt": {
+            "type": "string"
+          },
+          "settlementId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "settlementKey": {
+            "type": "string"
+          },
+          "settlementStatus": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "calculated",
+              "paying",
+              "paid",
+              "cancelled"
+            ]
+          },
+          "settlementTitle": {
+            "type": "string"
+          },
+          "settlementType": {
+            "type": "string",
+            "enum": [
+              "sale",
+              "bonus",
+              "salary",
+              "reward",
+              "subsidy",
+              "adjustment"
+            ]
+          },
+          "unitAssetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "unitAssetName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "weight": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "allocationId",
+          "amount",
+          "eventId",
+          "eventKey",
+          "eventOccurredAt",
+          "eventStatus",
+          "eventTitle",
+          "eventType",
+          "ratio",
+          "settlementDecidedAt",
+          "settlementId",
+          "settlementKey",
+          "settlementStatus",
+          "settlementTitle",
+          "settlementType",
+          "unitAssetId",
+          "unitAssetName",
+          "weight"
+        ]
+      },
       "CreateLedgerEventRequest": {
         "type": "object",
         "properties": {
@@ -2812,6 +3086,359 @@
           "status"
         ]
       },
+      "LedgerBatchClaimsResponse": {
+        "type": "object",
+        "properties": {
+          "allocationsProcessed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerSettlementClaim"
+            }
+          },
+          "message": {
+            "type": "string"
+          },
+          "settlementsTouched": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "allocationsProcessed",
+          "claims",
+          "message",
+          "settlementsTouched"
+        ]
+      },
+      "LedgerSettlementClaim": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "claimedAt": {
+            "type": "string"
+          },
+          "claimedByCharacterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "confirmedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confirmedByUserId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "in_game_mail",
+              "trade",
+              "bank",
+              "other"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settlementAllocationId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "recorded",
+              "confirmed",
+              "voided"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "voidedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "voidedByUserId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "amount",
+          "claimedAt",
+          "claimedByCharacterId",
+          "confirmedAt",
+          "confirmedByUserId",
+          "createdAt",
+          "id",
+          "method",
+          "notes",
+          "settlementAllocationId",
+          "status",
+          "updatedAt",
+          "voidedAt",
+          "voidedByUserId"
+        ]
+      },
+      "CreateLedgerBatchClaimsRequest": {
+        "type": "object",
+        "properties": {
+          "claimedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerBatchClaimItemRequest"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "in_game_mail",
+              "trade",
+              "bank",
+              "other"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "claimedAt",
+          "items"
+        ]
+      },
+      "LedgerBatchClaimItemRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "claimedByCharacterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "settlementAllocationId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "amount",
+          "settlementAllocationId"
+        ]
+      },
+      "LedgerSettlementDisbursementResponse": {
+        "type": "object",
+        "properties": {
+          "allocationMode": {
+            "type": "string",
+            "enum": [
+              "created",
+              "matched"
+            ]
+          },
+          "allocations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerSettlementAllocation"
+            }
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerSettlementClaim"
+            }
+          },
+          "message": {
+            "type": "string"
+          },
+          "settlement": {
+            "$ref": "#/components/schemas/LedgerSettlement"
+          },
+          "settlementStatusChanged": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allocationMode",
+          "allocations",
+          "claims",
+          "message",
+          "settlement",
+          "settlementStatusChanged"
+        ]
+      },
+      "LedgerSettlementAllocation": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "characterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "ratio": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "settlementId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "claimed",
+              "waived",
+              "cancelled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "amount",
+          "characterId",
+          "createdAt",
+          "id",
+          "ratio",
+          "settlementId",
+          "status",
+          "updatedAt",
+          "weight"
+        ]
+      },
+      "CreateSettlementDisbursementRequest": {
+        "type": "object",
+        "properties": {
+          "claimedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerDisbursementItemRequest"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "in_game_mail",
+              "trade",
+              "bank",
+              "other"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "claimedAt",
+          "items"
+        ]
+      },
+      "LedgerDisbursementItemRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "characterId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "weight": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "amount",
+          "characterId"
+        ]
+      },
       "LedgerSettlementResponse": {
         "type": "object",
         "properties": {
@@ -2971,64 +3598,6 @@
           "message"
         ]
       },
-      "LedgerSettlementAllocation": {
-        "type": "object",
-        "properties": {
-          "amount": {
-            "type": "number"
-          },
-          "characterId": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "exclusiveMinimum": 0
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "id": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "ratio": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "settlementId": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "claimed",
-              "waived",
-              "cancelled"
-            ]
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "weight": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "amount",
-          "characterId",
-          "createdAt",
-          "id",
-          "ratio",
-          "settlementId",
-          "status",
-          "updatedAt",
-          "weight"
-        ]
-      },
       "CreateLedgerAllocationRequest": {
         "type": "object",
         "properties": {
@@ -3092,104 +3661,6 @@
         "required": [
           "claim",
           "message"
-        ]
-      },
-      "LedgerSettlementClaim": {
-        "type": "object",
-        "properties": {
-          "amount": {
-            "type": "number"
-          },
-          "claimedAt": {
-            "type": "string"
-          },
-          "claimedByCharacterId": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "exclusiveMinimum": 0
-          },
-          "confirmedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "confirmedByUserId": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "exclusiveMinimum": 0
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "id": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "method": {
-            "type": "string",
-            "enum": [
-              "manual",
-              "in_game_mail",
-              "trade",
-              "bank",
-              "other"
-            ]
-          },
-          "notes": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "settlementAllocationId": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "recorded",
-              "confirmed",
-              "voided"
-            ]
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "voidedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "voidedByUserId": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "exclusiveMinimum": 0
-          }
-        },
-        "required": [
-          "amount",
-          "claimedAt",
-          "claimedByCharacterId",
-          "confirmedAt",
-          "confirmedByUserId",
-          "createdAt",
-          "id",
-          "method",
-          "notes",
-          "settlementAllocationId",
-          "status",
-          "updatedAt",
-          "voidedAt",
-          "voidedByUserId"
         ]
       },
       "CreateLedgerClaimRequest": {
@@ -6820,6 +7291,158 @@
         }
       }
     },
+    "/organizations/{organization}/ledger/claimable-recipients": {
+      "get": {
+        "tags": [
+          "Ledger",
+          "Claims"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List claimable recipient summaries for an organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerClaimableRecipientSummaryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization membership required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/claimable-recipients/{characterId}": {
+      "get": {
+        "tags": [
+          "Ledger",
+          "Claims"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "characterId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "required": false,
+            "name": "includeSiblingCharacters",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get claimable details for a recipient character.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerClaimableRecipientDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization membership required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Character not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organizations/{organization}/ledger/events/{eventId}/status": {
       "patch": {
         "tags": [
@@ -7278,6 +7901,197 @@
           },
           "404": {
             "description": "Game not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/claims/batch": {
+      "post": {
+        "tags": [
+          "Ledger",
+          "Claims"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLedgerBatchClaimsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Record multiple settlement claims in one request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerBatchClaimsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Allocation or character not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/settlements/{settlementId}/disburse": {
+      "post": {
+        "tags": [
+          "Ledger",
+          "Settlements"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "settlementId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSettlementDisbursementRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Disburse a settlement by creating or matching allocations and recording claims.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerSettlementDisbursementResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Settlement or character not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
             "content": {
               "application/json": {
                 "schema": {
