@@ -177,6 +177,7 @@ const myOrganizationsResponseSchema = z
 
 const organizationSearchQuerySchema = z
   .object({
+    displayName: z.string().trim().min(1).max(100).optional(),
     gameId: z.coerce.number().int().positive().optional(),
     gameSlug: z.string().trim().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(50).optional(),

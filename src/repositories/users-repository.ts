@@ -122,13 +122,14 @@ export class UsersRepository {
 
     const updated = await this.db.first<UserRecord>(
       `UPDATE users
-       SET display_name = ?, email_verified_at = ?, status = ?, updated_at = ?
+       SET display_name = ?, email_verified_at = ?, vanity = ?, status = ?, updated_at = ?
        WHERE id = ?
        RETURNING *`,
       input.displayName ?? existing.display_name,
       input.emailVerifiedAt === undefined
         ? existing.email_verified_at
         : input.emailVerifiedAt,
+      input.vanity === undefined ? existing.vanity : input.vanity,
       input.status ?? existing.status,
       nowIso(),
       id,

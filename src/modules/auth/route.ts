@@ -5,6 +5,7 @@ import {
   buildErrorResponseBody,
   ensureRequestId,
 } from "../../lib/errors";
+import { D1Client } from "../../infrastructure/d1/d1-client";
 import { ForgotPasswordService } from "../../services/auth/forgot-password-service";
 import { LoginService } from "../../services/auth/login-service";
 import { RegisterService } from "../../services/auth/register-service";
@@ -13,6 +14,7 @@ import { ResetPasswordService } from "../../services/auth/reset-password-service
 import { SessionAuthService } from "../../services/auth/session-auth-service";
 import { UpdateDisplayNameService } from "../../services/auth/update-display-name-service";
 import { VerifyEmailService } from "../../services/auth/verify-email-service";
+import { UsersRepository } from "../../repositories/users-repository";
 import {
   clearSessionCookie,
   getSessionCookie,
@@ -20,6 +22,7 @@ import {
 } from "../../lib/session-cookie";
 import {
   authMeRoute,
+  authUserDetailRoute,
   forgotPasswordRoute,
   loginRoute,
   logoutRoute,
@@ -31,6 +34,10 @@ import {
 } from "./schema";
 
 export const authRouter = new OpenAPIHono<AppBindings>();
+
+function isNumericIdentifier(value: string): boolean {
+  return /^\d+$/.test(value);
+}
 
 function validationErrorFromIssues(
   issues: Array<{ message: string; path: PropertyKey[] }>,
@@ -151,6 +158,56 @@ authRouter.openapi(authMeRoute, async (c) => {
   } catch (error) {
     if (error instanceof AppError) {
       return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403);
+    }
+
+    throw error;
+  }
+});
+
+authRouter.openapi(authUserDetailRoute, async (c) => {
+  const parsed = authUserDetailRoute.request.params.safeParse(c.req.param());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    await sessionAuth.requireActiveUser(getSessionCookie(c));
+
+    const db = new D1Client(c.env.APP_DB);
+    const usersRepository = new UsersRepository(db);
+    const user = isNumericIdentifier(parsed.data.user)
+      ? await usersRepository.findById(Number(parsed.data.user))
+      : await usersRepository.findByVanity(parsed.data.user);
+
+    if (!user) {
+      throw new AppError("User not found", 404, {
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    return c.json(
+      {
+        user: {
+          createdAt: user.created_at,
+          displayName: user.display_name,
+          id: user.id,
+          status: user.status,
+          vanity: user.vanity,
+        },
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404,
+      );
     }
 
     throw error;
