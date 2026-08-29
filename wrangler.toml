@@ -15,7 +15,7 @@ APP_BASE_URL = "https://notion-ledger-api.seikanchintw.workers.dev"
 NOTION_API_BASE_URL = "https://api.notion.com"
 NOTION_API_VERSION = "2022-06-28"
 OFFICIAL_ADMIN_EMAILS = "seikanchintw@gmail.com"
-RESEND_FROM_EMAIL = "Raid Ledger <no-reply@sideweaver.com>"
+RESEND_FROM_EMAIL = "Raid Ledger <no-reply@mail.sideweaver.com>"
 
 [[kv_namespaces]]
 binding = "SNAPSHOT_CACHE"

@@ -1,4 +1,5 @@
 NOTION_API_TOKEN=
 RESEND_API_KEY=
+RESEND_FROM_EMAIL=Raid Ledger <no-reply@mail.sideweaver.com>
 JWT_SECRET=
 PASSWORD_PEPPER=
