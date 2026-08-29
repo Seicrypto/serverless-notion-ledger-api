@@ -46,6 +46,7 @@ import {
 } from "./middleware";
 import {
   createLedgerAllocationRoute,
+  createLedgerEventBatchRoute,
   createLedgerBatchClaimsRoute,
   createLedgerClaimRoute,
   createLedgerEventRoute,
@@ -62,6 +63,7 @@ import {
   queryCharacterLedgerDashboardSummariesRoute,
   updateLedgerAllocationStatusRoute,
   updateLedgerClaimStatusRoute,
+  updateLedgerEventRoute,
   updateLedgerEventStatusRoute,
   updateLedgerSettlementStatusRoute,
 } from "./schema";
@@ -506,6 +508,131 @@ organizationLedgerRouter.openapi(createLedgerEventRoute, async (c) => {
   } catch (error) {
     if (error instanceof AppError) {
       return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(createLedgerEventBatchRoute, async (c) => {
+  const schema =
+    createLedgerEventBatchRoute.request.body.content["application/json"].schema;
+  const parsed = schema.safeParse(await c.req.json());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const session = requireLedgerSession(c);
+    const db = new D1Client(c.env.APP_DB);
+    const service = new EventLifecycleService(db);
+    const events: EventRecord[] = [];
+
+    for (const item of parsed.data.events) {
+      const event = await service.createEvent({
+        assetId: item.assetId,
+        createdByUserId: session.user.id,
+        eventType: item.eventType,
+        gameId: item.gameId,
+        holderRef: item.holderRef,
+        holderType: item.holderType,
+        notes: item.notes,
+        occurredAt: item.occurredAt,
+        organizationId: organization.id,
+        sourceType: item.sourceType,
+        title: item.title,
+      });
+      events.push(event);
+    }
+
+    return c.json(
+      {
+        events: events.map(toEventResponse),
+        message: "Events created successfully.",
+      },
+      201,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(updateLedgerEventRoute, async (c) => {
+  const paramsParsed = updateLedgerEventRoute.request.params.safeParse(c.req.param());
+  if (!paramsParsed.success) {
+    return c.json(
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
+      422,
+    );
+  }
+
+  const bodySchema =
+    updateLedgerEventRoute.request.body.content["application/json"].schema;
+  const bodyParsed = bodySchema.safeParse(await c.req.json());
+  if (!bodyParsed.success) {
+    return c.json(
+      validationErrorFromIssues(bodyParsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const membership = requireLedgerMembership(c);
+    assertLedgerManager(membership);
+    const db = new D1Client(c.env.APP_DB);
+    const event = await requireLedgerEvent(db, paramsParsed.data.eventId, organization.id);
+
+    if (bodyParsed.data.assetId !== undefined && bodyParsed.data.assetId !== null) {
+      const asset = await new (await import("../../repositories/assets-repository")).AssetsRepository(db).findById(bodyParsed.data.assetId);
+      if (!asset || asset.organization_id !== organization.id) {
+        throw new AppError("Asset not found", 404, { code: "ASSET_NOT_FOUND" });
+      }
+    }
+
+    if (bodyParsed.data.gameId !== undefined && bodyParsed.data.gameId !== null) {
+      const organizationGame = await new OrganizationGamesRepository(db).findByOrganizationAndGame(
+        organization.id,
+        bodyParsed.data.gameId,
+      );
+      if (!organizationGame) {
+        throw new AppError("Game not found for this organization", 404, {
+          code: "ORGANIZATION_GAME_NOT_FOUND",
+        });
+      }
+    }
+
+    const updated = await new (await import("../../repositories/events-repository")).EventsRepository(
+      db,
+    ).update(event.id, {
+      assetId: bodyParsed.data.assetId,
+      gameId: bodyParsed.data.gameId,
+      holderRef: bodyParsed.data.holderRef,
+      holderType: bodyParsed.data.holderType,
+      notes: bodyParsed.data.notes,
+      occurredAt: bodyParsed.data.occurredAt,
+      title: bodyParsed.data.title,
+    });
+
+    return c.json(
+      {
+        event: toEventResponse(updated),
+        message: "Event updated successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
     }
 
     throw error;

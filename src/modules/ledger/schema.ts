@@ -155,6 +155,36 @@ const createEventRequestSchema = z
   })
   .openapi("CreateLedgerEventRequest");
 
+const updateEventRequestSchema = z
+  .object({
+    assetId: z.number().int().positive().nullable().optional(),
+    gameId: z.number().int().positive().nullable().optional(),
+    holderRef: z.string().trim().max(255).nullable().optional(),
+    holderType: z
+      .enum(["character", "org_treasury", "market", "external", "custom"])
+      .optional(),
+    notes: z.string().trim().max(4000).nullable().optional(),
+    occurredAt: z.string().datetime().optional(),
+    title: z.string().trim().min(1).max(160).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  })
+  .openapi("UpdateLedgerEventRequest");
+
+const createEventBatchRequestSchema = z
+  .object({
+    events: z.array(createEventRequestSchema).min(1).max(100),
+  })
+  .openapi("CreateLedgerEventBatchRequest");
+
+const createEventBatchResponseSchema = z
+  .object({
+    events: z.array(eventSchema),
+    message: z.string(),
+  })
+  .openapi("CreateLedgerEventBatchResponse");
+
 const updateEventStatusRequestSchema = z
   .object({
     status: z.enum(["ready_for_settlement", "cancelled"]),
@@ -646,6 +676,30 @@ export const createLedgerEventRoute = createRoute({
   },
 });
 
+export const createLedgerEventBatchRoute = createRoute({
+  method: "post",
+  path: "/{organization}/ledger/events/batch",
+  tags: ["Ledger", "Events"],
+  request: {
+    params: organizationParamSchema,
+    body: {
+      content: { "application/json": { schema: createEventBatchRequestSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      content: { "application/json": { schema: createEventBatchResponseSchema } },
+      description: "Create a batch of ledger events.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization or related record not found." },
+    409: { content: { "application/json": { schema: errorSchema } }, description: "Business rule conflict." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
 export const listLedgerEventsRoute = createRoute({
   method: "get",
   path: "/{organization}/ledger/events",
@@ -681,6 +735,30 @@ export const getLedgerEventRoute = createRoute({
     401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
     404: { content: { "application/json": { schema: errorSchema } }, description: "Event not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const updateLedgerEventRoute = createRoute({
+  method: "patch",
+  path: "/{organization}/ledger/events/{eventId}",
+  tags: ["Ledger", "Events"],
+  request: {
+    params: eventIdParamSchema,
+    body: {
+      content: { "application/json": { schema: updateEventRequestSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: eventResponseSchema } },
+      description: "Update a ledger event.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Event not found." },
+    409: { content: { "application/json": { schema: errorSchema } }, description: "Business rule conflict." },
     422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
   },
 });

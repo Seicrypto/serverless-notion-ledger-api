@@ -56,6 +56,71 @@ const createAssetResponseSchema = z
   })
   .openapi("CreateAssetResponse");
 
+const assetListQuerySchema = z
+  .object({
+    assetType: z
+      .enum(["item", "currency", "ticket", "reward", "service", "other"])
+      .optional(),
+    gameId: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    q: z.string().trim().min(1).max(120).optional(),
+    status: z
+      .enum(["candidate", "org_verified", "active", "merged", "deprecated"])
+      .optional(),
+  })
+  .openapi("OrganizationAssetListQuery");
+
+const assetListResponseSchema = z
+  .object({
+    assets: z.array(assetSchema),
+    pagination: z.object({
+      hasMore: z.boolean(),
+      limit: z.number().int().positive(),
+      offset: z.number().int().nonnegative(),
+    }),
+  })
+  .openapi("OrganizationAssetListResponse");
+
+const assetDetailResponseSchema = z
+  .object({
+    asset: assetSchema,
+  })
+  .openapi("OrganizationAssetDetailResponse");
+
+const updateAssetRequestSchema = z
+  .object({
+    assetType: z
+      .enum(["item", "currency", "ticket", "reward", "service", "other"])
+      .optional(),
+    gameId: z.coerce.number().int().positive().optional(),
+    iconUrl: z.string().trim().url().nullable().optional(),
+    metadataJson: z.string().trim().nullable().optional(),
+    name: z.string().trim().min(1).max(120).optional(),
+    rarityLabel: z.string().trim().max(120).nullable().optional(),
+    status: z
+      .enum(["candidate", "org_verified", "active", "merged", "deprecated"])
+      .optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  })
+  .openapi("UpdateOrganizationAssetRequest");
+
+const updateAssetResponseSchema = z
+  .object({
+    asset: assetSchema,
+    message: z.string(),
+  })
+  .openapi("UpdateOrganizationAssetResponse");
+
+const resolveAssetRequestSchema = z
+  .object({
+    gameId: z.number().int().positive(),
+    name: z.string().trim().min(1).max(120),
+  })
+  .openapi("ResolveOrganizationAssetRequest");
+
 const duplicateCandidateSchema = z
   .object({
     alias: assetAliasSchema.nullable(),
@@ -75,6 +140,17 @@ const createAssetConflictResponseSchema = z
     message: z.string(),
   })
   .openapi("CreateAssetConflictResponse");
+
+const resolveAssetResponseSchema = z
+  .object({
+    duplicate: z.object({
+      exactMatch: duplicateCandidateSchema.nullable(),
+      normalizedName: z.string(),
+      possibleMatches: z.array(duplicateCandidateSchema),
+      recommendedAction: z.enum(["use_existing", "confirm_create", "allow_create"]),
+    }),
+  })
+  .openapi("ResolveOrganizationAssetResponse");
 
 const createAssetOperationalConflictResponseSchema = errorSchema.openapi(
   "CreateAssetOperationalConflictResponse",
@@ -153,6 +229,111 @@ export const createOrganizationAssetRoute = createRoute({
       content: { "application/json": { schema: validationErrorSchema } },
       description: "Validation failed.",
     },
+  },
+});
+
+export const listOrganizationAssetsRoute = createRoute({
+  method: "get",
+  path: "/{organization}/assets",
+  tags: ["Assets"],
+  request: {
+    params: organizationParamSchema,
+    query: assetListQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: assetListResponseSchema } },
+      description: "List organization assets.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const getOrganizationAssetRoute = createRoute({
+  method: "get",
+  path: "/{organization}/assets/{assetId}",
+  tags: ["Assets"],
+  request: {
+    params: organizationParamSchema.merge(assetIdParamSchema),
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: assetDetailResponseSchema } },
+      description: "Get an organization asset.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Asset not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const updateOrganizationAssetRoute = createRoute({
+  method: "patch",
+  path: "/{organization}/assets/{assetId}",
+  tags: ["Assets"],
+  request: {
+    params: organizationParamSchema.merge(assetIdParamSchema),
+    body: {
+      content: { "application/json": { schema: updateAssetRequestSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: updateAssetResponseSchema } },
+      description: "Update an organization asset.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Asset or game not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const searchOrganizationAssetsRoute = createRoute({
+  method: "get",
+  path: "/{organization}/assets/search",
+  tags: ["Assets"],
+  request: {
+    params: organizationParamSchema,
+    query: assetListQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: assetListResponseSchema } },
+      description: "Search organization assets.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const resolveOrganizationAssetsRoute = createRoute({
+  method: "post",
+  path: "/{organization}/assets/resolve",
+  tags: ["Assets"],
+  request: {
+    params: organizationParamSchema,
+    body: {
+      content: { "application/json": { schema: resolveAssetRequestSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: resolveAssetResponseSchema } },
+      description: "Resolve an asset name to existing candidates.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
   },
 });
 

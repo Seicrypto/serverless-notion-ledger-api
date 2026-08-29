@@ -24,6 +24,7 @@ async function main() {
       "organization_members",
       "characters",
       "games",
+      "character_claim_requests",
       "organization_games",
       "game_aliases",
       "assets",
@@ -63,6 +64,14 @@ async function main() {
       "game_id",
       "deleted_at",
       "deleted_by_user_id",
+    ]);
+    await assertHasColumns(db, "character_claim_requests", [
+      "organization_id",
+      "character_id",
+      "target_user_id",
+      "target_member_id",
+      "requested_by_user_id",
+      "status",
     ]);
     await assertHasColumns(db, "assets", [
       "asset_key",
