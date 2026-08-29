@@ -68,6 +68,13 @@ export function randomToken(byteLength = 32): string {
   return bytesToHex(crypto.getRandomValues(new Uint8Array(byteLength)));
 }
 
+export function randomNumericCode(length = 6): string {
+  const digits = new Uint8Array(length);
+  crypto.getRandomValues(digits);
+
+  return Array.from(digits, (digit) => String(digit % 10)).join("");
+}
+
 export async function verifyPassword(
   password: string,
   serializedHash: string,

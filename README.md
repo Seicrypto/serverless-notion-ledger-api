@@ -35,6 +35,9 @@ Set these as normal Worker variables:
 
 - `APP_BASE_URL`
   - Example: `https://api.example.com`
+- `APP_FRONTEND_URL`
+  - Optional frontend base URL used in email links
+  - Example: `https://app.example.com` or `https://app.example.com/`
 - `RESEND_FROM_EMAIL`
   - Example: `Raid Ledger <no-reply@mail.sideweaver.com>`
 - `OFFICIAL_ADMIN_EMAILS`
@@ -45,6 +48,8 @@ Set these as normal Worker variables:
 
 - `RESEND_API_KEY` must be configured on the Worker runtime. A GitHub secret alone is not enough for runtime email sending.
 - `RESEND_FROM_EMAIL` must use a sender identity that is authorized in Resend for the same account as `RESEND_API_KEY`. If the key is scoped to `mail.sideweaver.com`, values like `no-reply@sideweaver.com` will be rejected with `403`.
+- `APP_FRONTEND_URL` should point to the frontend site if email links need to open a UI page such as `/{lang}/account-status`. If omitted, email links fall back to `APP_BASE_URL`.
+- Registration `lang` values are normalized to the frontend-supported set: `zh-tw`, `en`, `ja`. Unknown values fall back to `en`.
 - `OFFICIAL_ADMIN_EMAILS` is treated as configuration, not a secret. It can be injected during deployment or set in the Cloudflare dashboard.
 - `wrangler.toml` declares required secrets so deploys fail early if they are missing.
 - KV naming and TTL strategy are documented in [docs/kv-key-strategy.md](/Users/sei/Documents/GitHub/serverless-notion-ledger-api/docs/kv-key-strategy.md).

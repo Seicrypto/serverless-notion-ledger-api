@@ -4,6 +4,7 @@ export interface Env {
   APP_DB: D1Database;
   APP_BASE_URL: string;
   APP_ENV: string;
+  APP_FRONTEND_URL?: string;
   JWT_SECRET: string;
   NOTION_API_BASE_URL: string;
   NOTION_API_TOKEN: string;

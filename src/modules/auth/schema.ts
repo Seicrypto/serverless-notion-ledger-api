@@ -10,6 +10,7 @@ const registerRequestSchema = z
   .object({
     displayName: z.string().trim().min(1).max(50).optional(),
     email: z.string().trim().email(),
+    lang: z.string().trim().min(2).max(10).optional(),
     password: z.string().min(8).max(128),
   })
   .openapi("RegisterRequest");
@@ -48,8 +49,13 @@ const registerConflictResponseSchema = z
 
 const verifyEmailQuerySchema = z
   .object({
+    code: z.string().trim().min(1).optional(),
     key: z.string().min(1),
-    token: z.string().min(1),
+    token: z.string().trim().min(1).optional(),
+  })
+  .refine((value) => Boolean(value.token || value.code), {
+    message: "Either token or code is required",
+    path: ["token"],
   })
   .openapi("VerifyEmailQuery");
 

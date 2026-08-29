@@ -1,6 +1,6 @@
 import { KvJsonRepository } from "../../infrastructure/kv/kv-json-repository";
 import { AppError } from "../../lib/errors";
-import { hashToken, randomToken } from "../../lib/crypto";
+import { hashToken, randomNumericCode, randomToken } from "../../lib/crypto";
 import type { Env } from "../../types/env";
 
 const EMAIL_VERIFICATION_TTL_SECONDS = 15 * 60;
@@ -17,9 +17,11 @@ export interface EmailVerificationTokenPayload {
   expiresAt: string;
   tokenHash: string;
   userId: number;
+  verificationCodeHash: string;
 }
 
 export interface EmailVerificationTokenIssueResult {
+  code: string;
   expiresAt: string;
   key: string;
   token: string;
@@ -34,7 +36,8 @@ export class EmailVerificationTokenService {
 
   async consumeToken(input: {
     key: string;
-    token: string;
+    code?: string;
+    token?: string;
   }): Promise<EmailVerificationTokenPayload | null> {
     const stored = await this.repository.get<EmailVerificationTokenPayload>(input.key);
 
@@ -42,8 +45,19 @@ export class EmailVerificationTokenService {
       return null;
     }
 
-    const providedHash = await hashToken(input.token);
-    if (providedHash !== stored.tokenHash) {
+    const candidate = input.token ?? input.code;
+
+    if (!candidate) {
+      return null;
+    }
+
+    const providedHash = await hashToken(candidate);
+    const isTokenMatch = input.token ? providedHash === stored.tokenHash : false;
+    const isCodeMatch = input.code
+      ? providedHash === stored.verificationCodeHash
+      : false;
+
+    if (!isTokenMatch && !isCodeMatch) {
       return null;
     }
 
@@ -56,6 +70,7 @@ export class EmailVerificationTokenService {
     userId: number;
     enforceCooldown?: boolean;
   }): Promise<EmailVerificationTokenIssueResult> {
+    const code = randomNumericCode(6);
     const token = randomToken(32);
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(
@@ -87,6 +102,7 @@ export class EmailVerificationTokenService {
         expiresAt,
         tokenHash: await hashToken(token),
         userId: input.userId,
+        verificationCodeHash: await hashToken(code),
       },
       EMAIL_VERIFICATION_TTL_SECONDS,
     );
@@ -100,6 +116,7 @@ export class EmailVerificationTokenService {
     );
 
     return {
+      code,
       expiresAt,
       key,
       token,
