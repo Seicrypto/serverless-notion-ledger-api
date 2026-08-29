@@ -1,8 +1,15 @@
 import { KvJsonRepository } from "../../infrastructure/kv/kv-json-repository";
+import { AppError } from "../../lib/errors";
 import { hashToken, randomToken } from "../../lib/crypto";
 import type { Env } from "../../types/env";
 
 const EMAIL_VERIFICATION_TTL_SECONDS = 15 * 60;
+const EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
+
+interface EmailVerificationResendCooldownPayload {
+  createdAt: string;
+  retryAfterSeconds: number;
+}
 
 export interface EmailVerificationTokenPayload {
   createdAt: string;
@@ -47,14 +54,30 @@ export class EmailVerificationTokenService {
   async issueToken(input: {
     email: string;
     userId: number;
+    enforceCooldown?: boolean;
   }): Promise<EmailVerificationTokenIssueResult> {
-    const tokenId = randomToken(12);
     const token = randomToken(32);
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(
       Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000,
     ).toISOString();
-    const key = this.keyFor(input.userId, tokenId);
+    const key = this.keyFor(input.userId);
+    const cooldownKey = this.cooldownKeyFor(input.userId);
+
+    if (input.enforceCooldown) {
+      const cooldown =
+        await this.repository.get<EmailVerificationResendCooldownPayload>(cooldownKey);
+
+      if (cooldown) {
+        throw new AppError(
+          "Verification email was sent recently. Please wait before retrying.",
+          429,
+          {
+            code: "EMAIL_VERIFICATION_RESEND_COOLDOWN",
+          },
+        );
+      }
+    }
 
     await this.repository.put<EmailVerificationTokenPayload>(
       key,
@@ -67,6 +90,14 @@ export class EmailVerificationTokenService {
       },
       EMAIL_VERIFICATION_TTL_SECONDS,
     );
+    await this.repository.put<EmailVerificationResendCooldownPayload>(
+      cooldownKey,
+      {
+        createdAt,
+        retryAfterSeconds: EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
+      },
+      EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
+    );
 
     return {
       expiresAt,
@@ -75,7 +106,11 @@ export class EmailVerificationTokenService {
     };
   }
 
-  keyFor(userId: number, tokenId: string): string {
-    return `auth:email-verify:${userId}:${tokenId}`;
+  keyFor(userId: number): string {
+    return `auth:email-verify:${userId}`;
+  }
+
+  cooldownKeyFor(userId: number): string {
+    return `auth:email-verify:cooldown:${userId}`;
   }
 }

@@ -29,6 +29,23 @@ const registerResponseSchema = z
   })
   .openapi("RegisterResponse");
 
+const registerConflictResponseSchema = z
+  .object({
+    canResendVerification: z.boolean(),
+    code: z.string(),
+    email: z.string().email(),
+    error: z.string(),
+    requestId: z.string(),
+    requiresEmailVerification: z.boolean(),
+    status: z.enum([
+      "pending_verification",
+      "pending_approval",
+      "active",
+      "disabled",
+    ]),
+  })
+  .openapi("RegisterConflictResponse");
+
 const verifyEmailQuerySchema = z
   .object({
     key: z.string().min(1),
@@ -59,7 +76,10 @@ const resendVerificationEmailRequestSchema = z
 
 const resendVerificationEmailResponseSchema = z
   .object({
+    email: z.string().email(),
     message: z.string(),
+    resent: z.boolean(),
+    status: z.enum(["pending_verification"]).nullable(),
   })
   .openapi("ResendVerificationEmailResponse");
 
@@ -196,10 +216,10 @@ export const registerRoute = createRoute({
     409: {
       content: {
         "application/json": {
-          schema: errorSchema,
+          schema: registerConflictResponseSchema,
         },
       },
-      description: "Email already exists.",
+      description: "Email already exists with a known registration status.",
     },
     422: {
       content: {
@@ -508,6 +528,14 @@ export const resendVerificationEmailRoute = createRoute({
         },
       },
       description: "Resend verification email failed.",
+    },
+    429: {
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+      description: "Verification email resend is temporarily throttled.",
     },
   },
 });

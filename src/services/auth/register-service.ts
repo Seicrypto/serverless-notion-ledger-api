@@ -5,7 +5,7 @@ import { hashPassword } from "../../lib/crypto";
 import { generateInitialUserVanity } from "../../lib/vanity";
 import { OfficialStaffsRepository } from "../../repositories/official-staffs-repository";
 import { UsersRepository } from "../../repositories/users-repository";
-import type { UserStatus } from "../../repositories/types";
+import type { UserRecord, UserStatus } from "../../repositories/types";
 import type { Env } from "../../types/env";
 import { EmailVerificationTokenService } from "./email-verification-token-service";
 import { isOfficialAdminEmail } from "./official-email-allowlist";
@@ -21,6 +21,44 @@ export interface RegisterUserResult {
   requiresEmailVerification: boolean;
   status: UserStatus;
   userId: number;
+}
+
+export class RegistrationConflictError extends ConflictError {
+  constructor(
+    readonly registration: {
+      canResendVerification: boolean;
+      email: string;
+      requiresEmailVerification: boolean;
+      status: UserStatus;
+    },
+  ) {
+    super(buildRegistrationConflictMessage(registration.status), {
+      code: "EMAIL_ALREADY_REGISTERED",
+    });
+    this.name = "RegistrationConflictError";
+  }
+}
+
+function buildRegistrationConflictMessage(status: UserStatus): string {
+  switch (status) {
+    case "pending_verification":
+      return "This email is already registered and still pending verification.";
+    case "pending_approval":
+      return "This email is already registered and pending approval.";
+    case "active":
+      return "This email is already registered.";
+    case "disabled":
+      return "This email belongs to a disabled account.";
+  }
+}
+
+function toRegistrationConflict(existing: UserRecord): RegistrationConflictError {
+  return new RegistrationConflictError({
+    canResendVerification: existing.status === "pending_verification",
+    email: existing.email,
+    requiresEmailVerification: existing.status === "pending_verification",
+    status: existing.status,
+  });
 }
 
 export class RegisterService {
@@ -55,7 +93,16 @@ export class RegisterService {
     const existing = await usersRepository.findByEmail(normalizedEmail);
 
     if (existing) {
-      throw new ConflictError("Email is already registered");
+      console.info(
+        JSON.stringify({
+          email: normalizedEmail,
+          status: existing.status,
+          step: "duplicate-email",
+          topic: "auth.register",
+          userId: existing.id,
+        }),
+      );
+      throw toRegistrationConflict(existing);
     }
 
     const isOfficial = isOfficialAdminEmail(
@@ -79,6 +126,17 @@ export class RegisterService {
       vanity,
     });
 
+    console.info(
+      JSON.stringify({
+        email: user.email,
+        isOfficial,
+        status: user.status,
+        step: "user-created",
+        topic: "auth.register",
+        userId: user.id,
+      }),
+    );
+
     if (isOfficial) {
       await officialStaffsRepository.create({
         role: "admin",
@@ -95,15 +153,49 @@ export class RegisterService {
 
     const verificationToken = await emailVerificationTokenService.issueToken({
       email: user.email,
+      enforceCooldown: false,
       userId: user.id,
     });
 
-    await resendClient.sendVerificationEmail({
-      to: user.email,
-      verificationUrl: `${this.env.APP_BASE_URL}/auth/verify-email?key=${encodeURIComponent(
-        verificationToken.key,
-      )}&token=${encodeURIComponent(verificationToken.token)}`,
-    });
+    console.info(
+      JSON.stringify({
+        email: user.email,
+        expiresAt: verificationToken.expiresAt,
+        key: verificationToken.key,
+        step: "verification-token-issued",
+        topic: "auth.register",
+        userId: user.id,
+      }),
+    );
+
+    try {
+      await resendClient.sendVerificationEmail({
+        to: user.email,
+        verificationUrl: `${this.env.APP_BASE_URL}/auth/verify-email?key=${encodeURIComponent(
+          verificationToken.key,
+        )}&token=${encodeURIComponent(verificationToken.token)}`,
+      });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          email: user.email,
+          error: error instanceof Error ? error.message : String(error),
+          step: "send-verification-email-failed",
+          topic: "auth.register",
+          userId: user.id,
+        }),
+      );
+      throw error;
+    }
+
+    console.info(
+      JSON.stringify({
+        email: user.email,
+        step: "verification-email-sent",
+        topic: "auth.register",
+        userId: user.id,
+      }),
+    );
 
     return {
       email: user.email,
