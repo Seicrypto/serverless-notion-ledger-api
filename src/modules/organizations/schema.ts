@@ -75,6 +75,7 @@ const organizationCardSchema = z
     slug: z.string(),
     stats: organizationCardStatsSchema,
     tags: z.array(z.string()),
+    vanity: z.string().nullable(),
   })
   .openapi("OrganizationCard");
 
