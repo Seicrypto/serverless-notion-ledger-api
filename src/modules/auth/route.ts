@@ -8,7 +8,10 @@ import {
 import { D1Client } from "../../infrastructure/d1/d1-client";
 import { ForgotPasswordService } from "../../services/auth/forgot-password-service";
 import { LoginService } from "../../services/auth/login-service";
-import { RegisterService } from "../../services/auth/register-service";
+import {
+  RegistrationConflictError,
+  RegisterService,
+} from "../../services/auth/register-service";
 import { ResendEmailVerificationService } from "../../services/auth/resend-email-verification-service";
 import { ResetPasswordService } from "../../services/auth/reset-password-service";
 import { SessionAuthService } from "../../services/auth/session-auth-service";
@@ -81,8 +84,23 @@ authRouter.openapi(registerRoute, async (c) => {
       201,
     );
   } catch (error) {
+    if (error instanceof RegistrationConflictError) {
+      return c.json(
+        {
+          canResendVerification: error.registration.canResendVerification,
+          code: error.code,
+          email: error.registration.email,
+          error: error.message,
+          requestId: ensureRequestId(c),
+          requiresEmailVerification: error.registration.requiresEmailVerification,
+          status: error.registration.status,
+        },
+        409,
+      );
+    }
+
     if (error instanceof AppError) {
-      return c.json(buildErrorResponseBody(c, error), error.status as 409 | 500);
+      return c.json(buildErrorResponseBody(c, error), error.status as 500);
     }
 
     throw error;
@@ -306,18 +324,22 @@ authRouter.openapi(resendVerificationEmailRoute, async (c) => {
 
   try {
     const service = new ResendEmailVerificationService(c.env);
-    await service.execute(parsed.data);
+    const result = await service.execute(parsed.data);
 
     return c.json(
       {
-        message:
-          "If the email belongs to a pending verification account, a new verification email has been sent.",
+        email: result.email,
+        message: result.resent
+          ? "A new verification email has been sent."
+          : "If the email belongs to a pending verification account, a new verification email has been sent.",
+        resent: result.resent,
+        status: result.status,
       },
       200,
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return c.json(buildErrorResponseBody(c, error), error.status as 500);
+      return c.json(buildErrorResponseBody(c, error), error.status as 429 | 500);
     }
 
     throw error;
