@@ -37,6 +37,13 @@ export class ResendEmailVerificationService {
     return url.toString();
   }
 
+  private buildApiVerificationUrl(input: { key: string; token: string }): string {
+    const url = new URL("/auth/verify-email", this.env.APP_BASE_URL);
+    url.searchParams.set("key", input.key);
+    url.searchParams.set("token", input.token);
+    return url.toString();
+  }
+
   async execute(
     input: ResendEmailVerificationInput,
   ): Promise<ResendEmailVerificationResult> {
@@ -106,6 +113,7 @@ export class ResendEmailVerificationService {
 
     try {
       await resendClient.sendVerificationEmail({
+        fallbackVerificationUrl: this.buildApiVerificationUrl(verificationToken),
         to: user.email,
         verificationCode: verificationToken.code,
         verificationUrl: this.buildVerificationUrl({

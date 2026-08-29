@@ -86,6 +86,13 @@ export class RegisterService {
     return url.toString();
   }
 
+  private buildApiVerificationUrl(input: { key: string; token: string }): string {
+    const url = new URL("/auth/verify-email", this.env.APP_BASE_URL);
+    url.searchParams.set("key", input.key);
+    url.searchParams.set("token", input.token);
+    return url.toString();
+  }
+
   private resolvePreferredLocale(lang?: string): SupportedFrontendLanguage {
     return normalizeFrontendLanguage(lang);
   }
@@ -202,6 +209,7 @@ export class RegisterService {
 
     try {
       await resendClient.sendVerificationEmail({
+        fallbackVerificationUrl: this.buildApiVerificationUrl(verificationToken),
         to: user.email,
         verificationCode: verificationToken.code,
         verificationUrl: this.buildVerificationUrl({
