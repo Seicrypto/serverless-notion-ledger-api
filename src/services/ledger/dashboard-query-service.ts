@@ -77,7 +77,7 @@ export type OrganizationLedgerDashboardSummaryResponse = {
   organization: {
     id: number;
     name: string;
-    slug: string;
+    vanity: string | null;
   };
   summary: {
     disbursementInProgressCount: number;
@@ -182,7 +182,7 @@ export class DashboardQueryService {
   constructor(private readonly db: DatabaseClient) {}
 
   async getOrganizationSummary(input: {
-    organization: { id: number; name: string; slug: string };
+    organization: { id: number; name: string; vanity: string | null };
   }): Promise<OrganizationLedgerDashboardSummaryResponse> {
     const totals = await this.db.first<SummaryTotalsRow>(
       `SELECT

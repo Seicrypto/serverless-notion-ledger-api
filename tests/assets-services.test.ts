@@ -41,7 +41,6 @@ test("asset duplicate detection returns exact canonical matches", async () => {
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Assets Guild",
-      slug: "assets-guild",
     });
     const game = await games.create({
       name: "Asset Game",
@@ -90,7 +89,6 @@ test("asset duplicate detection returns exact alias matches", async () => {
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Alias Guild",
-      slug: "alias-guild",
     });
     const game = await games.create({
       name: "Alias Game",
@@ -146,12 +144,10 @@ test("asset duplicate detection returns possible matches and ignores merged or o
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Possible Guild",
-      slug: "possible-guild",
     });
     const otherOrganization = await organizations.create({
       createdByUserId: owner.id,
       name: "Other Guild",
-      slug: "other-guild",
     });
     const game = await games.create({
       name: "Possible Game",
@@ -215,7 +211,6 @@ test("asset lifecycle creates organization-scoped assets and adds a primary alia
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Lifecycle Guild",
-      slug: "lifecycle-guild",
     });
     const game = await games.create({
       name: "Lifecycle Game",
@@ -263,7 +258,6 @@ test("asset lifecycle returns duplicate results instead of creating repeated ass
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Duplicate Guild",
-      slug: "duplicate-guild",
     });
     const game = await games.create({
       name: "Duplicate Game",
@@ -313,7 +307,6 @@ test("asset lifecycle resolves canonical assets and merges source aliases into t
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Merge Guild",
-      slug: "merge-guild",
     });
     const game = await games.create({
       name: "Merge Game",
@@ -382,7 +375,6 @@ test("asset lifecycle resolves organization or global default settlement units",
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Unit Guild",
-      slug: "unit-guild",
     });
     const game = await games.create({
       name: "Unit Game",
@@ -458,12 +450,10 @@ test("asset trust lifecycle promotes from candidate to org_verified and active b
     const organizationOne = await organizations.create({
       createdByUserId: ownerOne.id,
       name: "Trust Guild One",
-      slug: "trust-guild-one",
     });
     const organizationTwo = await organizations.create({
       createdByUserId: ownerTwo.id,
       name: "Trust Guild Two",
-      slug: "trust-guild-two",
     });
     const game = await games.create({
       name: "Trust Game",

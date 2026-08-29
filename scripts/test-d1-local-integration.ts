@@ -41,7 +41,6 @@ async function main() {
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Local D1 Guild",
-      slug: "local-d1-guild",
       vanity: "g-local-d1",
     });
 

@@ -517,7 +517,7 @@ const organizationLedgerDashboardSummaryResponseSchema = z
     organization: z.object({
       id: z.number().int().positive(),
       name: z.string(),
-      slug: z.string(),
+      vanity: z.string().nullable(),
     }),
     summary: z.object({
       disbursementInProgressCount: z.number().int().nonnegative(),

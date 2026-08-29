@@ -249,7 +249,6 @@ adminRouter.openapi(updateOrganizationVanityRoute, async (c) => {
         organization: {
           id: updated.id,
           name: updated.name,
-          slug: updated.slug,
           vanity: updated.vanity,
         },
       },

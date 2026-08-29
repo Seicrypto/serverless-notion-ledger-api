@@ -61,16 +61,10 @@ test("organizations repository supports CRUD over migrated schema", async () => 
       createdByUserId: owner.id,
       description: "Raid guild",
       name: "Raid Ledger",
-      slug: "raid-ledger",
       vanity: "raid-home",
     });
 
-    assert.equal(created.slug, "raid-ledger");
     assert.equal(created.vanity, "raid-home");
-
-    const found = await organizations.findBySlug("raid-ledger");
-    assert.ok(found);
-    assert.equal(found.id, created.id);
 
     const vanityFound = await organizations.findByVanity("raid-home");
     assert.ok(vanityFound);
@@ -80,7 +74,6 @@ test("organizations repository supports CRUD over migrated schema", async () => 
       description: "Raid guild updated",
       iconUrl: "https://example.com/icon.png",
       name: "Raid Ledger Updated",
-      slug: "raid-ledger-updated",
       vanity: "raid-ledger-home",
     });
 
@@ -110,7 +103,6 @@ test("organization members repository supports CRUD over migrated schema", async
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Member Guild",
-      slug: "member-guild",
     });
 
     const created = await members.create({
@@ -167,7 +159,6 @@ test("organization members repository supports pending approval workflow", async
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Pending Guild",
-      slug: "pending-guild",
     });
 
     const created = await members.create({
@@ -203,7 +194,6 @@ test("characters repository supports CRUD over migrated schema", async () => {
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Character Guild",
-      slug: "character-guild",
     });
 
     const game = await games.create({
@@ -308,7 +298,6 @@ test("organization games repository supports CRUD over migrated schema", async (
     const organization = await organizations.create({
       createdByUserId: owner.id,
       name: "Multi Game Guild",
-      slug: "multi-game-guild",
     });
 
     const game = await games.create({

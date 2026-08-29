@@ -130,7 +130,6 @@ export interface OrganizationRecord {
   icon_url: string | null;
   id: number;
   name: string;
-  slug: string;
   updated_at: string;
   vanity: string | null;
 }
@@ -140,7 +139,6 @@ export interface CreateOrganizationInput {
   description?: string | null;
   iconUrl?: string | null;
   name: string;
-  slug: string;
   vanity?: string | null;
 }
 
@@ -148,7 +146,6 @@ export interface UpdateOrganizationInput {
   description?: string | null;
   iconUrl?: string | null;
   name?: string;
-  slug?: string;
   vanity?: string | null;
 }
 

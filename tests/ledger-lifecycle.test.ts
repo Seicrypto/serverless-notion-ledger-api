@@ -35,7 +35,6 @@ async function createLedgerFixture() {
   const organization = await organizations.create({
     createdByUserId: owner.id,
     name: "Ledger Guild",
-    slug: "ledger-guild",
     vanity: "ledger-guild-home",
   });
   const game = await games.create({
@@ -449,7 +448,7 @@ test("dashboard summary counts unsettled events and disbursement states", async 
       organization: {
         id: fixture.organization.id,
         name: fixture.organization.name,
-        slug: fixture.organization.slug,
+        vanity: fixture.organization.vanity,
       },
     });
 

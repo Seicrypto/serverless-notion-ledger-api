@@ -30,7 +30,6 @@ CREATE TABLE official_staffs (
 CREATE TABLE organizations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
-  slug TEXT NOT NULL UNIQUE,
   description TEXT,
   icon_url TEXT,
   created_by_user_id INTEGER NOT NULL,
@@ -71,7 +70,6 @@ CREATE TABLE characters (
 
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_official_staffs_role ON official_staffs(role);
-CREATE INDEX idx_organizations_slug ON organizations(slug);
 CREATE INDEX idx_organization_members_organization_id
   ON organization_members(organization_id);
 CREATE INDEX idx_organization_members_user_id

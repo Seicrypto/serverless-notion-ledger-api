@@ -14,17 +14,15 @@ export class OrganizationsRepository {
     const created = await this.db.first<OrganizationRecord>(
       `INSERT INTO organizations (
         name,
-        slug,
         vanity,
         description,
         icon_url,
         created_by_user_id,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
       RETURNING *`,
       input.name,
-      input.slug,
       input.vanity ?? null,
       input.description ?? null,
       input.iconUrl ?? null,
@@ -51,13 +49,6 @@ export class OrganizationsRepository {
     );
   }
 
-  async findBySlug(slug: string): Promise<OrganizationRecord | null> {
-    return this.db.first<OrganizationRecord>(
-      `SELECT * FROM organizations WHERE slug = ?`,
-      slug,
-    );
-  }
-
   async findByVanity(vanity: string): Promise<OrganizationRecord | null> {
     return this.db.first<OrganizationRecord>(
       `SELECT * FROM organizations WHERE vanity = ?`,
@@ -79,11 +70,10 @@ export class OrganizationsRepository {
 
     const updated = await this.db.first<OrganizationRecord>(
       `UPDATE organizations
-       SET name = ?, slug = ?, vanity = ?, description = ?, icon_url = ?, updated_at = ?
+       SET name = ?, vanity = ?, description = ?, icon_url = ?, updated_at = ?
        WHERE id = ?
        RETURNING *`,
       input.name ?? existing.name,
-      input.slug ?? existing.slug,
       input.vanity === undefined ? existing.vanity : input.vanity,
       input.description === undefined
         ? existing.description

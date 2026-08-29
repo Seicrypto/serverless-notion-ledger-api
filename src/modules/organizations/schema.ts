@@ -13,7 +13,6 @@ const organizationSchema = z
     iconUrl: z.string().nullable(),
     id: z.number().int().positive(),
     name: z.string(),
-    slug: z.string(),
     updatedAt: z.string(),
     vanity: z.string().nullable(),
   })
@@ -72,7 +71,6 @@ const organizationCardSchema = z
     id: z.number().int().positive(),
     membership: organizationCardMembershipSchema,
     name: z.string(),
-    slug: z.string(),
     stats: organizationCardStatsSchema,
     tags: z.array(z.string()),
     vanity: z.string().nullable(),
@@ -225,12 +223,6 @@ const createOrganizationRequestSchema = z
     iconUrl: z.string().trim().url().nullable().optional(),
     initialCharacter: initialCharacterSchema,
     name: z.string().trim().min(1).max(100),
-    slug: z
-      .string()
-      .trim()
-      .min(2)
-      .max(80)
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   })
   .openapi("CreateOrganizationRequest");
 
@@ -248,13 +240,6 @@ const updateOrganizationRequestSchema = z
     description: z.string().trim().max(500).nullable().optional(),
     iconUrl: z.string().trim().url().nullable().optional(),
     name: z.string().trim().min(1).max(100).optional(),
-    slug: z
-      .string()
-      .trim()
-      .min(2)
-      .max(80)
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-      .optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field must be provided",
@@ -480,7 +465,7 @@ export const createOrganizationRoute = createRoute({
     },
     409: {
       content: { "application/json": { schema: errorSchema } },
-      description: "Organization name or slug already exists.",
+      description: "Organization name or vanity already exists.",
     },
     422: {
       content: { "application/json": { schema: validationErrorSchema } },
@@ -1274,7 +1259,7 @@ export const updateOrganizationRoute = createRoute({
     },
     409: {
       content: { "application/json": { schema: errorSchema } },
-      description: "Organization name or slug already exists.",
+      description: "Organization name or vanity already exists.",
     },
     422: {
       content: { "application/json": { schema: validationErrorSchema } },

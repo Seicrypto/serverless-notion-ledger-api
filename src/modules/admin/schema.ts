@@ -36,7 +36,6 @@ const managedOrganizationSchema = z
   .object({
     id: z.number().int().positive(),
     name: z.string(),
-    slug: z.string(),
     vanity: z.string().nullable(),
   })
   .openapi("ManagedOrganization");

@@ -112,12 +112,6 @@ function mapOrganizationConflict(error: unknown): AppError | null {
     });
   }
 
-  if (error.message.includes("organizations.slug")) {
-    return new AppError("Organization slug already exists", 409, {
-      code: "ORGANIZATION_SLUG_EXISTS",
-    });
-  }
-
   if (error.message.includes("organizations.vanity")) {
     return new AppError("Organization vanity already exists", 409, {
       code: "ORGANIZATION_VANITY_EXISTS",
@@ -169,7 +163,6 @@ function toOrganizationResponse(
     iconUrl: organization.icon_url,
     id: organization.id,
     name: organization.name,
-    slug: organization.slug,
     updatedAt: organization.updated_at,
     vanity: organization.vanity,
   };
@@ -563,7 +556,6 @@ function toOrganizationCard(
     id: organization.id,
     membership,
     name: organization.name,
-    slug: organization.slug,
     stats: {
       characterCount: organization.activeCharacterCount,
       memberCount: organization.activeMemberCount,
@@ -623,10 +615,10 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
 
   if (searchTerm) {
     whereClauses.push(
-      `(o.name LIKE ? OR o.slug LIKE ? OR o.vanity LIKE ? OR g.name LIKE ? OR g.slug LIKE ?)`,
+      `(o.name LIKE ? OR o.vanity LIKE ? OR g.name LIKE ? OR g.slug LIKE ?)`,
     );
     const pattern = `%${searchTerm}%`;
-    bindings.push(pattern, pattern, pattern, pattern, pattern);
+    bindings.push(pattern, pattern, pattern, pattern);
   }
 
   if (parsed.data.gameId) {
@@ -646,13 +638,12 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
   const rows = await db.all<{
     created_at: string;
     created_by_user_id: number;
-    description: string | null;
-    icon_url: string | null;
-    id: number;
-    name: string;
-    slug: string;
-    updated_at: string;
-    vanity: string | null;
+      description: string | null;
+      icon_url: string | null;
+      id: number;
+      name: string;
+      updated_at: string;
+      vanity: string | null;
   }>(
     `SELECT DISTINCT
        o.*
@@ -737,7 +728,6 @@ organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
       membership_role: "owner" | "admin" | "member";
       membership_status: "pending" | "active";
       name: string;
-      slug: string;
       updated_at: string;
       vanity: string | null;
     }>(
@@ -768,7 +758,6 @@ organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
         icon_url: row.icon_url,
         id: row.id,
         name: row.name,
-        slug: row.slug,
         updated_at: row.updated_at,
         vanity: row.vanity,
       })),
@@ -1329,7 +1318,6 @@ organizationsRouter.openapi(createOrganizationRoute, async (c) => {
       description: parsed.data.description,
       iconUrl: parsed.data.iconUrl,
       name: parsed.data.name,
-      slug: parsed.data.slug,
       vanity,
     });
 
@@ -2207,7 +2195,6 @@ organizationsRouter.openapi(updateOrganizationRoute, async (c) => {
       description: body.data.description,
       iconUrl: body.data.iconUrl,
       name: body.data.name,
-      slug: body.data.slug,
     });
 
     return c.json(

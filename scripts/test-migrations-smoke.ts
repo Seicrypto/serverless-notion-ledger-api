@@ -39,6 +39,7 @@ async function main() {
 
     await assertHasColumns(db, "users", ["vanity"]);
     await assertHasColumns(db, "organizations", ["vanity"]);
+    await assertDoesNotHaveColumns(db, "organizations", ["slug"]);
     await assertHasColumns(db, "games", ["source", "source_id"]);
     await assertHasColumns(db, "game_aliases", ["alias", "locale", "alias_type"]);
     await assertHasColumns(db, "organization_members", [
@@ -138,6 +139,22 @@ async function assertHasColumns(
     assert.ok(
       columnNames.has(requiredColumn),
       `Missing column ${tableName}.${requiredColumn}`,
+    );
+  }
+}
+
+async function assertDoesNotHaveColumns(
+  db: SqliteCliClient,
+  tableName: string,
+  forbiddenColumns: string[],
+) {
+  const columns = await db.all<{ name: string }>(`PRAGMA table_info(${tableName})`);
+  const columnNames = new Set(columns.map((column) => column.name));
+
+  for (const forbiddenColumn of forbiddenColumns) {
+    assert.ok(
+      !columnNames.has(forbiddenColumn),
+      `Unexpected column ${tableName}.${forbiddenColumn}`,
     );
   }
 }
