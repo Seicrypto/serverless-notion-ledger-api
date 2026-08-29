@@ -175,6 +175,8 @@ function toGameResponse(game: Awaited<ReturnType<GamesRepository["create"]>>) {
     id: game.id,
     isActive: game.is_active === 1,
     name: game.name,
+    officialSiteUrl: game.official_site_url,
+    resolvedIconUrl: resolveGameIconUrl(game.icon_url, game.official_site_url),
     slug: game.slug,
     source: game.source,
     sourceId: game.source_id,
@@ -199,6 +201,55 @@ function toCharacterResponse(
     slug: character.slug,
     updatedAt: character.updated_at,
     vanity: character.vanity,
+  };
+}
+
+type OrganizationGameRow = {
+  display_name: string | null;
+  game_id: number;
+  game_name: string;
+  game_slug: string;
+  icon_url: string | null;
+  is_primary: number;
+  official_site_url: string | null;
+  organization_id: number;
+  source: "internal" | "steam";
+  source_id: string | null;
+  type: "game" | "activity";
+};
+
+function resolveGameIconUrl(
+  iconUrl: string | null,
+  officialSiteUrl: string | null,
+): string | null {
+  if (iconUrl) {
+    return iconUrl;
+  }
+
+  if (!officialSiteUrl) {
+    return null;
+  }
+
+  try {
+    return new URL("/favicon.ico", officialSiteUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+function toOrganizationGameSummary(game: OrganizationGameRow) {
+  return {
+    displayName: game.display_name,
+    gameId: game.game_id,
+    gameName: game.game_name,
+    gameSlug: game.game_slug,
+    iconUrl: game.icon_url,
+    isPrimary: game.is_primary === 1,
+    officialSiteUrl: game.official_site_url,
+    resolvedIconUrl: resolveGameIconUrl(game.icon_url, game.official_site_url),
+    source: game.source,
+    sourceId: game.source_id,
+    type: game.type,
   };
 }
 
@@ -376,6 +427,22 @@ async function requireOrganizationManager(
   return membership;
 }
 
+async function requireOrganizationOwner(
+  members: OrganizationMembersRepository,
+  organizationId: number,
+  userId: number,
+) {
+  const membership = await members.findByOrganizationAndUser(organizationId, userId);
+
+  if (!membership || membership.status !== "active" || membership.role !== "owner") {
+    throw new ForbiddenError("Organization owner access is required", {
+      code: "ORGANIZATION_OWNER_REQUIRED",
+    });
+  }
+
+  return membership;
+}
+
 async function requireAvailableCharacter(
   characters: CharactersRepository,
   pendingActions: OrganizationMemberPendingActionsRepository,
@@ -452,7 +519,9 @@ async function buildOrganizationSearchItems(
     game_id: number;
     game_name: string;
     game_slug: string;
+    icon_url: string | null;
     is_primary: number;
+    official_site_url: string | null;
     organization_id: number;
     source: "internal" | "steam";
     source_id: string | null;
@@ -465,6 +534,8 @@ async function buildOrganizationSearchItems(
        og.is_primary,
        g.name AS game_name,
        g.slug AS game_slug,
+       g.icon_url,
+       g.official_site_url,
        g.source,
        g.source_id,
        g.type
@@ -472,6 +543,28 @@ async function buildOrganizationSearchItems(
      INNER JOIN games g ON g.id = og.game_id
      WHERE og.organization_id IN (${placeholders})
      ORDER BY og.sort_order ASC, og.id ASC`,
+    ...organizationIds,
+  );
+
+  const characterGames = await db.all<OrganizationGameRow>(
+    `SELECT DISTINCT
+       c.organization_id,
+       c.game_id,
+       NULL AS display_name,
+       0 AS is_primary,
+       g.name AS game_name,
+       g.slug AS game_slug,
+       g.icon_url,
+       g.official_site_url,
+       g.source,
+       g.source_id,
+       g.type
+     FROM characters c
+     INNER JOIN games g ON g.id = c.game_id
+     WHERE c.organization_id IN (${placeholders})
+       AND c.deleted_at IS NULL
+       AND c.game_id IS NOT NULL
+     ORDER BY c.game_id ASC`,
     ...organizationIds,
   );
 
@@ -499,9 +592,18 @@ async function buildOrganizationSearchItems(
     ...organizationIds,
   );
 
-  const gamesByOrganization = new Map<number, typeof games>();
+  const gamesByOrganization = new Map<number, OrganizationGameRow[]>();
   for (const game of games) {
     const existing = gamesByOrganization.get(game.organization_id) ?? [];
+    existing.push(game);
+    gamesByOrganization.set(game.organization_id, existing);
+  }
+
+  for (const game of characterGames) {
+    const existing = gamesByOrganization.get(game.organization_id) ?? [];
+    if (existing.some((candidate) => candidate.game_id === game.game_id)) {
+      continue;
+    }
     existing.push(game);
     gamesByOrganization.set(game.organization_id, existing);
   }
@@ -517,16 +619,9 @@ async function buildOrganizationSearchItems(
     ...toOrganizationResponse(organization),
     activeCharacterCount: characterCountByOrganization.get(organization.id) ?? 0,
     activeMemberCount: memberCountByOrganization.get(organization.id) ?? 0,
-    games: (gamesByOrganization.get(organization.id) ?? []).map((game) => ({
-      displayName: game.display_name,
-      gameId: game.game_id,
-      gameName: game.game_name,
-      gameSlug: game.game_slug,
-      isPrimary: game.is_primary === 1,
-      source: game.source,
-      sourceId: game.source_id,
-      type: game.type,
-    })),
+    games: (gamesByOrganization.get(organization.id) ?? []).map(
+      toOrganizationGameSummary,
+    ),
   }));
 }
 
@@ -548,7 +643,7 @@ function toOrganizationCard(
       maxVisibleTags: ORGANIZATION_CARD_MAX_VISIBLE_TAGS,
     },
     games: organization.games.map((game) => ({
-      iconUrl: null,
+      iconUrl: game.resolvedIconUrl,
       name: game.displayName ?? game.gameName,
       primary: game.isPrimary,
     })),
@@ -638,6 +733,8 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
   const rows = await db.all<{
     created_at: string;
     created_by_user_id: number;
+    deleted_at: string | null;
+    deleted_by_user_id: number | null;
       description: string | null;
       icon_url: string | null;
       id: number;
@@ -650,7 +747,8 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
      FROM organizations o
      LEFT JOIN organization_games og ON og.organization_id = o.id
      LEFT JOIN games g ON g.id = og.game_id
-     ${whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : ""}
+     WHERE o.deleted_at IS NULL
+     ${whereClauses.length > 0 ? `AND ${whereClauses.join(" AND ")}` : ""}
      ORDER BY o.id ASC
      LIMIT ?
      OFFSET ?`,
@@ -721,6 +819,8 @@ organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
       approved_at: string | null;
       created_at: string;
       created_by_user_id: number;
+      deleted_at: string | null;
+      deleted_by_user_id: number | null;
       description: string | null;
       icon_url: string | null;
       id: number;
@@ -740,6 +840,7 @@ organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
        FROM organization_members m
        INNER JOIN organizations o ON o.id = m.organization_id
        WHERE m.user_id = ?
+         AND o.deleted_at IS NULL
          AND m.status IN ('pending', 'active')
        ORDER BY o.id ASC`,
       session.user.id,
@@ -754,6 +855,8 @@ organizationsRouter.openapi(myOrganizationsRoute, async (c) => {
       visibleRows.map((row) => ({
         created_at: row.created_at,
         created_by_user_id: row.created_by_user_id,
+        deleted_at: row.deleted_at,
+        deleted_by_user_id: row.deleted_by_user_id,
         description: row.description,
         icon_url: row.icon_url,
         id: row.id,
@@ -835,7 +938,6 @@ organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
   try {
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
-    const characters = new CharactersRepository(db);
     const organization = await requireOrganizationByIdentifier(
       organizations,
       parsed.data.organization,
@@ -843,9 +945,75 @@ organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
 
     return c.json(
       {
-        characters: (await characters.listByOrganization(organization.id)).map(
-          toCharacterResponse,
-        ),
+        characters: (
+          await db.all<{
+            claimed_by_user_id: number | null;
+            created_at: string;
+            deleted_at: string | null;
+            deleted_by_user_id: number | null;
+            game_id: number | null;
+            game_name: string | null;
+            game_slug: string | null;
+            icon_url: string | null;
+            id: number;
+            is_active: number;
+            name: string;
+            notes: string | null;
+            official_site_url: string | null;
+            organization_id: number;
+            organization_game_display_name: string | null;
+            organization_game_is_primary: number | null;
+            slug: string | null;
+            source: "internal" | "steam" | null;
+            source_id: string | null;
+            type: "game" | "activity" | null;
+            updated_at: string;
+            vanity: string | null;
+          }>(
+            `SELECT
+               c.*,
+               og.display_name AS organization_game_display_name,
+               og.is_primary AS organization_game_is_primary,
+               g.name AS game_name,
+               g.slug AS game_slug,
+               g.icon_url,
+               g.official_site_url,
+               g.source,
+               g.source_id,
+               g.type
+             FROM characters c
+             LEFT JOIN organization_games og
+               ON og.organization_id = c.organization_id
+              AND og.game_id = c.game_id
+             LEFT JOIN games g ON g.id = c.game_id
+             WHERE c.organization_id = ?
+               AND c.deleted_at IS NULL
+             ORDER BY c.id ASC`,
+            organization.id,
+          )
+        ).map((character) => ({
+          ...toCharacterResponse(character),
+          game:
+            character.game_id === null ||
+            character.game_name === null ||
+            character.game_slug === null ||
+            character.source === null ||
+            character.type === null
+              ? null
+              : toOrganizationGameSummary({
+                  display_name: character.organization_game_display_name,
+                  game_id: character.game_id,
+                  game_name: character.game_name,
+                  game_slug: character.game_slug,
+                  icon_url: character.icon_url,
+                  is_primary: character.organization_game_is_primary ?? 0,
+                  official_site_url: character.official_site_url,
+                  organization_id: character.organization_id,
+                  source: character.source,
+                  source_id: character.source_id,
+                  type: character.type,
+                }),
+        })),
       },
       200,
     );
@@ -912,11 +1080,21 @@ organizationsRouter.openapi(organizationManagementCharactersRoute, async (c) => 
       claimed_by_user_id: number | null;
       claimed_display_name: string | null;
       claimed_vanity: string | null;
+      game_id: number | null;
+      game_name: string | null;
+      game_slug: string | null;
       id: number;
+      icon_url: string | null;
+      is_primary: number | null;
       name: string;
       notes: string | null;
+      official_site_url: string | null;
       slug: string | null;
+      source: "internal" | "steam" | null;
+      source_id: string | null;
+      type: "game" | "activity" | null;
       vanity: string | null;
+      organization_game_display_name: string | null;
     }>(
       `SELECT
          c.id,
@@ -924,11 +1102,25 @@ organizationsRouter.openapi(organizationManagementCharactersRoute, async (c) => 
          c.slug,
          c.vanity,
          c.notes,
+         c.game_id,
          c.claimed_by_user_id,
          u.display_name AS claimed_display_name,
-         u.vanity AS claimed_vanity
+         u.vanity AS claimed_vanity,
+         og.display_name AS organization_game_display_name,
+         og.is_primary,
+         g.name AS game_name,
+         g.slug AS game_slug,
+         g.icon_url,
+         g.official_site_url,
+         g.source,
+         g.source_id,
+         g.type
        FROM characters c
        LEFT JOIN users u ON u.id = c.claimed_by_user_id
+       LEFT JOIN organization_games og
+         ON og.organization_id = c.organization_id
+        AND og.game_id = c.game_id
+       LEFT JOIN games g ON g.id = c.game_id
        WHERE c.organization_id = ?
          AND c.deleted_at IS NULL
        ORDER BY c.id ASC`,
@@ -948,6 +1140,26 @@ organizationsRouter.openapi(organizationManagementCharactersRoute, async (c) => 
                 },
           description: character.notes,
           displayName: character.name,
+          game:
+            character.game_id === null ||
+            character.game_name === null ||
+            character.game_slug === null ||
+            character.source === null ||
+            character.type === null
+              ? null
+              : toOrganizationGameSummary({
+                  display_name: character.organization_game_display_name,
+                  game_id: character.game_id,
+                  game_name: character.game_name,
+                  game_slug: character.game_slug,
+                  icon_url: character.icon_url,
+                  is_primary: character.is_primary ?? 0,
+                  official_site_url: character.official_site_url,
+                  organization_id: organization.id,
+                  source: character.source,
+                  source_id: character.source_id,
+                  type: character.type,
+                }),
           id: character.id,
           isClaimed: character.claimed_by_user_id !== null,
           slug: character.slug,
@@ -1057,6 +1269,16 @@ organizationsRouter.openapi(organizationPendingMembersRoute, async (c) => {
       status: "pending";
       user_id: number;
       user_vanity: string | null;
+      game_id: number | null;
+      game_name: string | null;
+      game_slug: string | null;
+      icon_url: string | null;
+      official_site_url: string | null;
+      organization_game_display_name: string | null;
+      organization_game_is_primary: number | null;
+      source: "internal" | "steam" | null;
+      source_id: string | null;
+      type: "game" | "activity" | null;
     }>(
       `SELECT
          m.id AS member_id,
@@ -1071,11 +1293,25 @@ organizationsRouter.openapi(organizationPendingMembersRoute, async (c) => {
          c.name AS character_name,
          c.slug AS character_slug,
          c.vanity AS character_vanity,
-         c.notes AS character_notes
+         c.notes AS character_notes,
+         c.game_id,
+         og.display_name AS organization_game_display_name,
+         og.is_primary AS organization_game_is_primary,
+         g.name AS game_name,
+         g.slug AS game_slug,
+         g.icon_url,
+         g.official_site_url,
+         g.source,
+         g.source_id,
+         g.type
        FROM organization_members m
        INNER JOIN users u ON u.id = m.user_id
        INNER JOIN organization_member_pending_actions p ON p.member_id = m.id
        LEFT JOIN characters c ON c.id = p.character_id
+       LEFT JOIN organization_games og
+         ON og.organization_id = m.organization_id
+        AND og.game_id = c.game_id
+       LEFT JOIN games g ON g.id = c.game_id
        WHERE m.organization_id = ?
          AND m.status = 'pending'
        ORDER BY m.id ASC`,
@@ -1094,6 +1330,26 @@ organizationsRouter.openapi(organizationPendingMembersRoute, async (c) => {
               : {
                   characterId: member.character_id,
                   description: member.character_notes,
+                  game:
+                    member.game_id === null ||
+                    member.game_name === null ||
+                    member.game_slug === null ||
+                    member.source === null ||
+                    member.type === null
+                      ? null
+                      : toOrganizationGameSummary({
+                          display_name: member.organization_game_display_name,
+                          game_id: member.game_id,
+                          game_name: member.game_name,
+                          game_slug: member.game_slug,
+                          icon_url: member.icon_url,
+                          is_primary: member.organization_game_is_primary ?? 0,
+                          official_site_url: member.official_site_url,
+                          organization_id: organization.id,
+                          source: member.source,
+                          source_id: member.source_id,
+                          type: member.type,
+                        }),
                   name: member.character_name,
                   slug: member.character_slug,
                   vanity: member.character_vanity,
@@ -1141,10 +1397,20 @@ organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
     );
 
     const characters = await db.all<{
+      game_id: number | null;
+      game_name: string | null;
+      game_slug: string | null;
       id: number;
+      icon_url: string | null;
+      is_primary: number | null;
       name: string;
       notes: string | null;
+      official_site_url: string | null;
+      organization_game_display_name: string | null;
       slug: string | null;
+      source: "internal" | "steam" | null;
+      source_id: string | null;
+      type: "game" | "activity" | null;
       vanity: string | null;
     }>(
       `SELECT
@@ -1152,9 +1418,23 @@ organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
          c.name,
          c.slug,
          c.vanity,
-         c.notes
+         c.notes,
+         c.game_id,
+         og.display_name AS organization_game_display_name,
+         og.is_primary,
+         g.name AS game_name,
+         g.slug AS game_slug,
+         g.icon_url,
+         g.official_site_url,
+         g.source,
+         g.source_id,
+         g.type
        FROM characters c
        LEFT JOIN organization_member_pending_actions p ON p.character_id = c.id
+       LEFT JOIN organization_games og
+         ON og.organization_id = c.organization_id
+        AND og.game_id = c.game_id
+       LEFT JOIN games g ON g.id = c.game_id
        WHERE c.organization_id = ?
          AND c.deleted_at IS NULL
          AND c.is_active = 1
@@ -1169,6 +1449,26 @@ organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
         characters: characters.map((character) => ({
           characterId: character.id,
           description: character.notes,
+          game:
+            character.game_id === null ||
+            character.game_name === null ||
+            character.game_slug === null ||
+            character.source === null ||
+            character.type === null
+              ? null
+              : toOrganizationGameSummary({
+                  display_name: character.organization_game_display_name,
+                  game_id: character.game_id,
+                  game_name: character.game_name,
+                  game_slug: character.game_slug,
+                  icon_url: character.icon_url,
+                  is_primary: character.is_primary ?? 0,
+                  official_site_url: character.official_site_url,
+                  organization_id: organization.id,
+                  source: character.source,
+                  source_id: character.source_id,
+                  type: character.type,
+                }),
           name: character.name,
           slug: character.slug,
           vanity: character.vanity,
@@ -2123,18 +2423,16 @@ organizationsRouter.openapi(deleteOrganizationRoute, async (c) => {
     const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
+    const members = new OrganizationMembersRepository(db);
     const organization = await requireOrganizationByIdentifier(
       organizations,
       parsed.data.organization,
     );
+    await requireOrganizationOwner(members, organization.id, session.user.id);
 
-    if (organization.created_by_user_id !== session.user.id) {
-      throw new ForbiddenError("Only the organization creator can delete it", {
-        code: "ORGANIZATION_DELETE_FORBIDDEN",
-      });
-    }
-
-    await organizations.delete(organization.id);
+    await organizations.delete(organization.id, {
+      deletedByUserId: session.user.id,
+    });
 
     return c.json(
       {

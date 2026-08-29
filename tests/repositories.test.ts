@@ -115,9 +115,23 @@ test("organizations repository supports CRUD over migrated schema", async () => 
     assert.equal(updated.icon_url, "https://example.com/icon.png");
     assert.equal(updated.vanity, "raid-ledger-home");
 
-    await organizations.delete(created.id);
+    const deletedRecord = await organizations.delete(created.id, {
+      deletedByUserId: owner.id,
+    });
+    assert.ok(deletedRecord.deleted_at);
+    assert.equal(deletedRecord.deleted_by_user_id, owner.id);
+
     const deleted = await organizations.findById(created.id);
     assert.equal(deleted, null);
+
+    const deletedByVanity = await organizations.findByVanity("raid-ledger-home");
+    assert.equal(deletedByVanity, null);
+
+    const includedDeleted = await organizations.findById(created.id, {
+      includeDeleted: true,
+    });
+    assert.ok(includedDeleted);
+    assert.equal(includedDeleted.deleted_by_user_id, owner.id);
   } finally {
     await cleanup();
   }
@@ -280,6 +294,7 @@ test("games repository supports CRUD over migrated schema", async () => {
 
     const created = await games.create({
       description: "Massively multiplayer online role-playing game",
+      officialSiteUrl: "https://worldofwarcraft.blizzard.com/",
       name: "World of Warcraft",
       slug: "wow",
       source: "steam",
@@ -291,6 +306,10 @@ test("games repository supports CRUD over migrated schema", async () => {
     assert.equal(created.type, "game");
     assert.equal(created.source, "steam");
     assert.equal(created.source_id, "12345");
+    assert.equal(
+      created.official_site_url,
+      "https://worldofwarcraft.blizzard.com/",
+    );
 
     const found = await games.findBySlug("wow");
     assert.ok(found);
@@ -300,6 +319,7 @@ test("games repository supports CRUD over migrated schema", async () => {
       iconUrl: "https://example.com/wow.png",
       isActive: false,
       name: "World of Warcraft Retail",
+      officialSiteUrl: "https://worldofwarcraft.blizzard.com/en-us/",
       slug: "wow-retail",
       sourceId: "54321",
     });
@@ -307,6 +327,10 @@ test("games repository supports CRUD over migrated schema", async () => {
     assert.equal(updated.name, "World of Warcraft Retail");
     assert.equal(updated.icon_url, "https://example.com/wow.png");
     assert.equal(updated.is_active, 0);
+    assert.equal(
+      updated.official_site_url,
+      "https://worldofwarcraft.blizzard.com/en-us/",
+    );
     assert.equal(updated.source_id, "54321");
 
     await games.delete(created.id);

@@ -145,6 +145,8 @@ export interface UpdateUserProfileInput {
 export interface OrganizationRecord {
   created_at: string;
   created_by_user_id: number;
+  deleted_at: string | null;
+  deleted_by_user_id: number | null;
   description: string | null;
   icon_url: string | null;
   id: number;
@@ -261,6 +263,7 @@ export interface GameRecord {
   id: number;
   is_active: number;
   name: string;
+  official_site_url: string | null;
   slug: string;
   source: GameSource;
   source_id: string | null;
@@ -273,6 +276,7 @@ export interface CreateGameInput {
   iconUrl?: string | null;
   isActive?: boolean;
   name: string;
+  officialSiteUrl?: string | null;
   slug: string;
   source?: GameSource;
   sourceId?: string | null;
@@ -284,6 +288,7 @@ export interface UpdateGameInput {
   iconUrl?: string | null;
   isActive?: boolean;
   name?: string;
+  officialSiteUrl?: string | null;
   slug?: string;
   source?: GameSource;
   sourceId?: string | null;

@@ -914,6 +914,18 @@
           "name": {
             "type": "string"
           },
+          "officialSiteUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedIconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "slug": {
             "type": "string"
           },
@@ -944,6 +956,8 @@
           "id",
           "isActive",
           "name",
+          "officialSiteUrl",
+          "resolvedIconUrl",
           "slug",
           "source",
           "sourceId",
@@ -1220,6 +1234,12 @@
             "type": "integer",
             "exclusiveMinimum": 0
           },
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "gameName": {
             "type": "string"
           },
@@ -1228,6 +1248,18 @@
           },
           "isPrimary": {
             "type": "boolean"
+          },
+          "officialSiteUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedIconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source": {
             "type": "string",
@@ -1253,9 +1285,12 @@
         "required": [
           "displayName",
           "gameId",
+          "iconUrl",
           "gameName",
           "gameSlug",
           "isPrimary",
+          "officialSiteUrl",
+          "resolvedIconUrl",
           "source",
           "sourceId",
           "type"
@@ -1317,12 +1352,108 @@
           "characters": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/OrganizationCharacter"
+              "$ref": "#/components/schemas/OrganizationCharacterWithGame"
             }
           }
         },
         "required": [
           "characters"
+        ]
+      },
+      "OrganizationCharacterWithGame": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/OrganizationCharacter"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "game": {
+                "$ref": "#/components/schemas/OrganizationCharacterGame"
+              }
+            },
+            "required": [
+              "game"
+            ]
+          }
+        ]
+      },
+      "OrganizationCharacterGame": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gameId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gameName": {
+            "type": "string"
+          },
+          "gameSlug": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "officialSiteUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedIconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "internal",
+              "steam"
+            ]
+          },
+          "sourceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "game",
+              "activity"
+            ]
+          }
+        },
+        "required": [
+          "displayName",
+          "gameId",
+          "iconUrl",
+          "gameName",
+          "gameSlug",
+          "isPrimary",
+          "officialSiteUrl",
+          "resolvedIconUrl",
+          "source",
+          "sourceId",
+          "type"
         ]
       },
       "OrganizationCharacter": {
@@ -1520,6 +1651,9 @@
           "displayName": {
             "type": "string"
           },
+          "game": {
+            "$ref": "#/components/schemas/OrganizationCharacterGame"
+          },
           "id": {
             "type": "integer",
             "exclusiveMinimum": 0
@@ -1544,6 +1678,7 @@
           "claimedBy",
           "description",
           "displayName",
+          "game",
           "id",
           "isClaimed",
           "slug",
@@ -1704,6 +1839,9 @@
               "null"
             ]
           },
+          "game": {
+            "$ref": "#/components/schemas/OrganizationCharacterGame"
+          },
           "name": {
             "type": "string"
           },
@@ -1723,6 +1861,7 @@
         "required": [
           "characterId",
           "description",
+          "game",
           "name",
           "slug",
           "vanity"

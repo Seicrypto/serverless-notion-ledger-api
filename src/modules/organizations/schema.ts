@@ -22,9 +22,12 @@ const organizationGameSchema = z
   .object({
     displayName: z.string().nullable(),
     gameId: z.number().int().positive(),
+    iconUrl: z.string().nullable(),
     gameName: z.string(),
     gameSlug: z.string(),
     isPrimary: z.boolean(),
+    officialSiteUrl: z.string().nullable(),
+    resolvedIconUrl: z.string().nullable(),
     source: z.enum(["internal", "steam"]),
     sourceId: z.string().nullable(),
     type: z.enum(["game", "activity"]),
@@ -101,6 +104,16 @@ const characterSchema = z
   })
   .openapi("OrganizationCharacter");
 
+const characterGameSchema = organizationGameSchema
+  .nullable()
+  .openapi("OrganizationCharacterGame");
+
+const organizationCharacterWithGameSchema = characterSchema
+  .extend({
+    game: characterGameSchema,
+  })
+  .openapi("OrganizationCharacterWithGame");
+
 const organizationMemberSchema = z
   .object({
     approvedAt: z.string().nullable(),
@@ -129,6 +142,8 @@ const gameSchema = z
     id: z.number().int().positive(),
     isActive: z.boolean(),
     name: z.string(),
+    officialSiteUrl: z.string().nullable(),
+    resolvedIconUrl: z.string().nullable(),
     slug: z.string(),
     source: z.enum(["internal", "steam"]),
     sourceId: z.string().nullable(),
@@ -157,7 +172,7 @@ const organizationDetailResponseSchema = z
 
 const organizationCharactersResponseSchema = z
   .object({
-    characters: z.array(characterSchema),
+    characters: z.array(organizationCharacterWithGameSchema),
   })
   .openapi("OrganizationCharactersResponse");
 
@@ -280,6 +295,7 @@ const memberAssignmentCharacterSchema = z
   .object({
     characterId: z.number().int().positive().nullable(),
     description: z.string().nullable(),
+    game: characterGameSchema,
     name: z.string(),
     slug: z.string().nullable(),
     vanity: z.string().nullable(),
@@ -297,6 +313,7 @@ const organizationManagementCharacterSchema = z
       .nullable(),
     description: z.string().nullable(),
     displayName: z.string(),
+    game: characterGameSchema,
     id: z.number().int().positive(),
     isClaimed: z.boolean(),
     slug: z.string().nullable(),

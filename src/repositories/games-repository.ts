@@ -14,18 +14,20 @@ export class GamesRepository {
         type,
         description,
         icon_url,
+        official_site_url,
         source,
         source_id,
         is_active,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *`,
       input.name,
       input.slug,
       input.type ?? "game",
       input.description ?? null,
       input.iconUrl ?? null,
+      input.officialSiteUrl ?? null,
       input.source ?? "internal",
       input.sourceId ?? null,
       toSqliteBoolean(input.isActive ?? true),
@@ -61,7 +63,7 @@ export class GamesRepository {
 
     const updated = await this.db.first<GameRecord>(
       `UPDATE games
-       SET name = ?, slug = ?, type = ?, description = ?, icon_url = ?, source = ?, source_id = ?, is_active = ?, updated_at = ?
+       SET name = ?, slug = ?, type = ?, description = ?, icon_url = ?, official_site_url = ?, source = ?, source_id = ?, is_active = ?, updated_at = ?
        WHERE id = ?
        RETURNING *`,
       input.name ?? existing.name,
@@ -69,6 +71,9 @@ export class GamesRepository {
       input.type ?? existing.type,
       input.description === undefined ? existing.description : input.description,
       input.iconUrl === undefined ? existing.icon_url : input.iconUrl,
+      input.officialSiteUrl === undefined
+        ? existing.official_site_url
+        : input.officialSiteUrl,
       input.source ?? existing.source,
       input.sourceId === undefined ? existing.source_id : input.sourceId,
       input.isActive === undefined

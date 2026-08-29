@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-const NPX_COMMAND = process.platform === "win32" ? "npx.cmd" : "npx";
 const execFileAsync = promisify(execFile);
+const WRANGLER_BIN = join(process.cwd(), "node_modules", "wrangler", "bin", "wrangler.js");
 
 export interface LocalD1TestContext {
   cleanup(): Promise<void>;
@@ -46,7 +46,7 @@ export async function runWrangler(
   } = {},
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(NPX_COMMAND, ["wrangler", ...args], {
+    const child = spawn(process.execPath, [WRANGLER_BIN, ...args], {
       cwd: process.cwd(),
       env: {
         ...process.env,
