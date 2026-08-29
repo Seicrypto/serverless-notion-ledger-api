@@ -5,6 +5,7 @@ import { GamesRepository } from "../src/repositories/games-repository";
 import { OrganizationMembersRepository } from "../src/repositories/organization-members-repository";
 import { OrganizationGamesRepository } from "../src/repositories/organization-games-repository";
 import { OrganizationsRepository } from "../src/repositories/organizations-repository";
+import { UserProfilesRepository } from "../src/repositories/user-profiles-repository";
 import { UsersRepository } from "../src/repositories/users-repository";
 import { createTestDatabase } from "./support/test-database";
 
@@ -42,6 +43,39 @@ test("users repository supports CRUD over migrated schema", async () => {
     await repository.delete(created.id);
     const deleted = await repository.findById(created.id);
     assert.equal(deleted, null);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("user profiles repository supports create and upsert over migrated schema", async () => {
+  const { cleanup, db } = await createTestDatabase();
+  try {
+    const users = new UsersRepository(db);
+    const profiles = new UserProfilesRepository(db);
+    const user = await users.create({
+      email: "locale-owner@example.com",
+      passwordHash: "hash-locale-owner",
+      vanity: "u-locale-owner",
+    });
+
+    const created = await profiles.create({
+      preferredLocale: "zh-tw",
+      userId: user.id,
+    });
+
+    assert.equal(created.preferred_locale, "zh-tw");
+
+    const upserted = await profiles.upsert({
+      preferredLocale: "en",
+      userId: user.id,
+    });
+
+    assert.equal(upserted.preferred_locale, "en");
+
+    const found = await profiles.findByUserId(user.id);
+    assert.ok(found);
+    assert.equal(found.preferred_locale, "en");
   } finally {
     await cleanup();
   }

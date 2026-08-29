@@ -5,8 +5,9 @@ import type { Env } from "../../types/env";
 import { EmailVerificationTokenService } from "./email-verification-token-service";
 
 export interface VerifyEmailInput {
+  code?: string;
   key: string;
-  token: string;
+  token?: string;
 }
 
 export interface VerifyEmailResult {

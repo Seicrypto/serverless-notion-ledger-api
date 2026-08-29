@@ -1,18 +1,22 @@
 import { D1Client } from "../../infrastructure/d1/d1-client";
 import { ResendClient } from "../../infrastructure/resend/resend-client";
-import { ConflictError } from "../../lib/errors";
+import { AppError, ConflictError } from "../../lib/errors";
 import { hashPassword } from "../../lib/crypto";
 import { generateInitialUserVanity } from "../../lib/vanity";
 import { OfficialStaffsRepository } from "../../repositories/official-staffs-repository";
+import { UserProfilesRepository } from "../../repositories/user-profiles-repository";
 import { UsersRepository } from "../../repositories/users-repository";
 import type { UserRecord, UserStatus } from "../../repositories/types";
 import type { Env } from "../../types/env";
+import type { SupportedFrontendLanguage } from "../../types/locale";
+import { normalizeFrontendLanguage } from "../../types/locale";
 import { EmailVerificationTokenService } from "./email-verification-token-service";
 import { isOfficialAdminEmail } from "./official-email-allowlist";
 
 export interface RegisterUserInput {
   displayName?: string;
   email: string;
+  lang?: string;
   password: string;
 }
 
@@ -64,6 +68,28 @@ function toRegistrationConflict(existing: UserRecord): RegistrationConflictError
 export class RegisterService {
   constructor(private readonly env: Env) {}
 
+  private buildVerificationUrl(input: {
+    code: string;
+    email: string;
+    key: string;
+    lang: SupportedFrontendLanguage;
+    token: string;
+  }): string {
+    const baseUrl = this.env.APP_FRONTEND_URL ?? this.env.APP_BASE_URL;
+    const url = new URL(`/${input.lang}/account-status`, baseUrl);
+    url.searchParams.set("mode", "verify-email");
+    url.searchParams.set("status", "pending_verification");
+    url.searchParams.set("email", input.email);
+    url.searchParams.set("key", input.key);
+    url.searchParams.set("token", input.token);
+    url.searchParams.set("code", input.code);
+    return url.toString();
+  }
+
+  private resolvePreferredLocale(lang?: string): SupportedFrontendLanguage {
+    return normalizeFrontendLanguage(lang);
+  }
+
   private async reserveInitialVanity(
     usersRepository: UsersRepository,
     displayName?: string | null,
@@ -83,6 +109,7 @@ export class RegisterService {
   async execute(input: RegisterUserInput): Promise<RegisterUserResult> {
     const db = new D1Client(this.env.APP_DB);
     const usersRepository = new UsersRepository(db);
+    const userProfilesRepository = new UserProfilesRepository(db);
     const officialStaffsRepository = new OfficialStaffsRepository(db);
     const resendClient = new ResendClient(
       this.env.RESEND_API_KEY,
@@ -90,6 +117,7 @@ export class RegisterService {
     );
     const emailVerificationTokenService = new EmailVerificationTokenService(this.env);
     const normalizedEmail = input.email.trim().toLowerCase();
+    const preferredLocale = this.resolvePreferredLocale(input.lang);
     const existing = await usersRepository.findByEmail(normalizedEmail);
 
     if (existing) {
@@ -124,6 +152,10 @@ export class RegisterService {
       ),
       status: isOfficial ? "active" : "pending_verification",
       vanity,
+    });
+    await userProfilesRepository.upsert({
+      preferredLocale,
+      userId: user.id,
     });
 
     console.info(
@@ -171,9 +203,12 @@ export class RegisterService {
     try {
       await resendClient.sendVerificationEmail({
         to: user.email,
-        verificationUrl: `${this.env.APP_BASE_URL}/auth/verify-email?key=${encodeURIComponent(
-          verificationToken.key,
-        )}&token=${encodeURIComponent(verificationToken.token)}`,
+        verificationCode: verificationToken.code,
+        verificationUrl: this.buildVerificationUrl({
+          ...verificationToken,
+          email: user.email,
+          lang: preferredLocale,
+        }),
       });
     } catch (error) {
       console.error(

@@ -1,4 +1,7 @@
-import type { LocaleCode } from "../types/locale";
+import type {
+  LocaleCode,
+  SupportedFrontendLanguage,
+} from "../types/locale";
 
 export type UserStatus =
   | "pending_verification"
@@ -121,6 +124,22 @@ export interface UpdateUserInput {
   emailVerifiedAt?: string | null;
   status?: UserStatus;
   vanity?: string | null;
+}
+
+export interface UserProfileRecord {
+  created_at: string;
+  preferred_locale: SupportedFrontendLanguage | null;
+  updated_at: string;
+  user_id: number;
+}
+
+export interface CreateUserProfileInput {
+  preferredLocale?: SupportedFrontendLanguage | null;
+  userId: number;
+}
+
+export interface UpdateUserProfileInput {
+  preferredLocale?: SupportedFrontendLanguage | null;
 }
 
 export interface OrganizationRecord {

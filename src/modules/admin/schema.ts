@@ -293,6 +293,45 @@ export const adminUserDetailRoute = createRoute({
   },
 });
 
+export const deleteUserRoute = createRoute({
+  method: "delete",
+  path: "/users/{user}",
+  tags: ["Admin"],
+  request: {
+    params: userIdentifierParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: managedUserResponseSchema,
+        },
+      },
+      description: "User deleted successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Official admin access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User cannot be deleted because dependent records still exist.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
 function createManageUserRoute(path: string, description: string) {
   return createRoute({
     method: "post",

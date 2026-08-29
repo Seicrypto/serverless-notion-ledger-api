@@ -18,6 +18,7 @@ async function main() {
 
     for (const requiredTable of [
       "users",
+      "user_profiles",
       "official_staffs",
       "organizations",
       "organization_members",
@@ -38,6 +39,7 @@ async function main() {
     }
 
     await assertHasColumns(db, "users", ["vanity"]);
+    await assertHasColumns(db, "user_profiles", ["preferred_locale"]);
     await assertHasColumns(db, "organizations", ["vanity"]);
     await assertDoesNotHaveColumns(db, "organizations", ["slug"]);
     await assertHasColumns(db, "games", ["source", "source_id"]);

@@ -16,6 +16,7 @@ import { UsersRepository } from "../../repositories/users-repository";
 import {
   adminUserDetailRoute,
   approveUserRoute,
+  deleteUserRoute,
   disableUserRoute,
   enableUserRoute,
   listDisabledUsersRoute,
@@ -51,6 +52,8 @@ async function requireUserByIdentifier(
 ) {
   const user = isNumericIdentifier(identifier)
     ? await users.findById(Number(identifier))
+    : identifier.includes("@")
+      ? await users.findByEmail(identifier.trim().toLowerCase())
     : await users.findByVanity(identifier);
 
   if (!user) {
@@ -193,6 +196,74 @@ adminRouter.openapi(adminUserDetailRoute, async (c) => {
       return c.json(
         buildErrorResponseBody(c, error),
         error.status as 401 | 403 | 404,
+      );
+    }
+
+    throw error;
+  }
+});
+
+adminRouter.openapi(deleteUserRoute, async (c) => {
+  const params = deleteUserRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const sessionAuth = new SessionAuthService(c.env);
+    const session = await sessionAuth.requireOfficialAdmin(getSessionCookie(c));
+
+    const db = new D1Client(c.env.APP_DB);
+    const users = new UsersRepository(db);
+    const user = await requireUserByIdentifier(users, params.data.user);
+
+    if (user.id === session.user.id) {
+      throw new ConflictError("You cannot delete your own admin account", {
+        code: "CANNOT_DELETE_SELF",
+      });
+    }
+
+    try {
+      await users.delete(user.id);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.toLowerCase().includes("foreign key constraint failed")
+      ) {
+        throw new ConflictError(
+          "User cannot be deleted because dependent records still exist.",
+          {
+            code: "USER_DELETE_CONFLICT",
+          },
+        );
+      }
+
+      throw error;
+    }
+
+    return c.json(
+      {
+        message: "User deleted successfully.",
+        user: {
+          displayName: user.display_name,
+          email: user.email,
+          emailVerifiedAt: user.email_verified_at,
+          id: user.id,
+          status: user.status,
+          vanity: user.vanity,
+        },
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
       );
     }
 
