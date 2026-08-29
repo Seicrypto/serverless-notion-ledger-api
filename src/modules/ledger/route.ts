@@ -100,7 +100,6 @@ function validationErrorFromIssues(
 type PublicOrganizationContext = {
   id: number;
   name: string;
-  slug: string;
   vanity: string | null;
 };
 
@@ -1205,7 +1204,7 @@ async function resolvePublicOrganization(c: {
 
   const organization = isNumericIdentifier(identifier)
     ? await repository.findById(Number(identifier))
-    : (await repository.findByVanity(identifier)) ?? (await repository.findBySlug(identifier));
+    : await repository.findByVanity(identifier);
 
   if (!organization) {
     throw new AppError("Organization not found", 404, {
@@ -1216,7 +1215,6 @@ async function resolvePublicOrganization(c: {
   return {
     id: organization.id,
     name: organization.name,
-    slug: organization.slug,
     vanity: organization.vanity,
   };
 }
