@@ -31,11 +31,13 @@ export class ResendClient {
   }
 
   async sendVerificationEmail(input: {
+    fallbackVerificationUrl: string;
     verificationCode: string;
     to: string;
     verificationUrl: string;
   }): Promise<void> {
     const safeVerificationUrl = escapeHtml(input.verificationUrl);
+    const safeFallbackVerificationUrl = escapeHtml(input.fallbackVerificationUrl);
     const safeVerificationCode = escapeHtml(input.verificationCode);
 
     await this.sendEmail({
@@ -44,8 +46,8 @@ export class ResendClient {
         `<h2 style="margin:0 0 12px">Verify your Raid Ledger email</h2>` +
         `<p style="margin:0 0 12px">Welcome to Raid Ledger. Confirm this email address to finish setting up your account.</p>` +
         `<p style="margin:0 0 12px"><a href="${safeVerificationUrl}" style="display:inline-block;padding:10px 16px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:8px">Verify email</a></p>` +
-        `<p style="margin:0 0 8px">If the button does not work, copy and paste this URL into your browser:</p>` +
-        `<p style="margin:0 0 12px;word-break:break-all"><a href="${safeVerificationUrl}">${safeVerificationUrl}</a></p>` +
+        `<p style="margin:0 0 8px">If the app page does not open, use the backup verification link below:</p>` +
+        `<p style="margin:0 0 12px;word-break:break-all"><a href="${safeFallbackVerificationUrl}">Open backup verification link</a></p>` +
         `<p style="margin:0 0 4px"><strong>Your verification code:</strong> ${safeVerificationCode}</p>` +
         `<p style="margin:0">This code expires in 15 minutes.</p>` +
         `</div>`,
@@ -53,6 +55,7 @@ export class ResendClient {
       text:
         "Verify your Raid Ledger email.\n\n" +
         `Open this link: ${input.verificationUrl}\n\n` +
+        `Backup verification link: ${input.fallbackVerificationUrl}\n\n` +
         `Your verification code: ${input.verificationCode}\n` +
         "This code expires in 15 minutes.",
       to: input.to,
