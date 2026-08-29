@@ -18,6 +18,7 @@ export type OrganizationMemberPendingKind = "apply" | "invite";
 export type OfficialStaffRole = "admin" | "staff";
 export type GameType = "game" | "activity";
 export type GameSource = "internal" | "steam";
+export type GameMetadataSource = "inherited" | "official";
 export type GameAliasType =
   | "official"
   | "localized"
@@ -145,6 +146,8 @@ export interface UpdateUserProfileInput {
 export interface OrganizationRecord {
   created_at: string;
   created_by_user_id: number;
+  deleted_at: string | null;
+  deleted_by_user_id: number | null;
   description: string | null;
   icon_url: string | null;
   id: number;
@@ -260,7 +263,9 @@ export interface GameRecord {
   icon_url: string | null;
   id: number;
   is_active: number;
+  metadata_source: GameMetadataSource;
   name: string;
+  official_site_url: string | null;
   slug: string;
   source: GameSource;
   source_id: string | null;
@@ -272,7 +277,9 @@ export interface CreateGameInput {
   description?: string | null;
   iconUrl?: string | null;
   isActive?: boolean;
+  metadataSource?: GameMetadataSource;
   name: string;
+  officialSiteUrl?: string | null;
   slug: string;
   source?: GameSource;
   sourceId?: string | null;
@@ -283,7 +290,9 @@ export interface UpdateGameInput {
   description?: string | null;
   iconUrl?: string | null;
   isActive?: boolean;
+  metadataSource?: GameMetadataSource;
   name?: string;
+  officialSiteUrl?: string | null;
   slug?: string;
   source?: GameSource;
   sourceId?: string | null;

@@ -18,15 +18,19 @@ export class OrganizationsRepository {
         description,
         icon_url,
         created_by_user_id,
+        deleted_at,
+        deleted_by_user_id,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *`,
       input.name,
       input.vanity ?? null,
       input.description ?? null,
       input.iconUrl ?? null,
       input.createdByUserId,
+      null,
+      null,
       timestamp,
       timestamp,
     );
@@ -38,27 +42,97 @@ export class OrganizationsRepository {
     return created;
   }
 
-  async delete(id: number): Promise<void> {
-    await this.db.run(`DELETE FROM organizations WHERE id = ?`, id);
+  async delete(
+    id: number,
+    options: {
+      deletedByUserId?: number | null;
+    } = {},
+  ): Promise<OrganizationRecord> {
+    const existing = await this.findByIdOrThrow(id, {
+      includeDeleted: true,
+    });
+
+    if (existing.deleted_at) {
+      return existing;
+    }
+
+    const deleted = await this.db.first<OrganizationRecord>(
+      `UPDATE organizations
+       SET deleted_at = ?,
+           deleted_by_user_id = ?,
+           updated_at = ?
+       WHERE id = ?
+       RETURNING *`,
+      nowIso(),
+      options.deletedByUserId ?? null,
+      nowIso(),
+      id,
+    );
+
+    if (!deleted) {
+      throw new Error(`Failed to soft delete organization ${id}`);
+    }
+
+    return deleted;
   }
 
-  async findById(id: number): Promise<OrganizationRecord | null> {
+  async findById(
+    id: number,
+    options: {
+      includeDeleted?: boolean;
+    } = {},
+  ): Promise<OrganizationRecord | null> {
+    if (options.includeDeleted) {
+      return this.db.first<OrganizationRecord>(
+        `SELECT * FROM organizations WHERE id = ?`,
+        id,
+      );
+    }
+
     return this.db.first<OrganizationRecord>(
-      `SELECT * FROM organizations WHERE id = ?`,
+      `SELECT * FROM organizations
+       WHERE id = ?
+         AND deleted_at IS NULL`,
       id,
     );
   }
 
-  async findByVanity(vanity: string): Promise<OrganizationRecord | null> {
+  async findByVanity(
+    vanity: string,
+    options: {
+      includeDeleted?: boolean;
+    } = {},
+  ): Promise<OrganizationRecord | null> {
+    if (options.includeDeleted) {
+      return this.db.first<OrganizationRecord>(
+        `SELECT * FROM organizations WHERE vanity = ?`,
+        vanity,
+      );
+    }
+
     return this.db.first<OrganizationRecord>(
-      `SELECT * FROM organizations WHERE vanity = ?`,
+      `SELECT * FROM organizations
+       WHERE vanity = ?
+         AND deleted_at IS NULL`,
       vanity,
     );
   }
 
-  async list(): Promise<OrganizationRecord[]> {
+  async list(
+    options: {
+      includeDeleted?: boolean;
+    } = {},
+  ): Promise<OrganizationRecord[]> {
+    if (options.includeDeleted) {
+      return this.db.all<OrganizationRecord>(
+        `SELECT * FROM organizations ORDER BY id ASC`,
+      );
+    }
+
     return this.db.all<OrganizationRecord>(
-      `SELECT * FROM organizations ORDER BY id ASC`,
+      `SELECT * FROM organizations
+       WHERE deleted_at IS NULL
+       ORDER BY id ASC`,
     );
   }
 
@@ -90,8 +164,13 @@ export class OrganizationsRepository {
     return updated;
   }
 
-  private async findByIdOrThrow(id: number): Promise<OrganizationRecord> {
-    const record = await this.findById(id);
+  private async findByIdOrThrow(
+    id: number,
+    options: {
+      includeDeleted?: boolean;
+    } = {},
+  ): Promise<OrganizationRecord> {
+    const record = await this.findById(id, options);
 
     if (!record) {
       throw new Error(`Organization ${id} not found`);

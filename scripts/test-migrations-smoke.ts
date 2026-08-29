@@ -40,9 +40,18 @@ async function main() {
 
     await assertHasColumns(db, "users", ["vanity"]);
     await assertHasColumns(db, "user_profiles", ["preferred_locale"]);
-    await assertHasColumns(db, "organizations", ["vanity"]);
+    await assertHasColumns(db, "organizations", [
+      "vanity",
+      "deleted_at",
+      "deleted_by_user_id",
+    ]);
     await assertDoesNotHaveColumns(db, "organizations", ["slug"]);
-    await assertHasColumns(db, "games", ["source", "source_id"]);
+    await assertHasColumns(db, "games", [
+      "source",
+      "source_id",
+      "metadata_source",
+      "official_site_url",
+    ]);
     await assertHasColumns(db, "game_aliases", ["alias", "locale", "alias_type"]);
     await assertHasColumns(db, "organization_members", [
       "status",
@@ -107,12 +116,14 @@ async function main() {
     ]);
 
     const spiritVale = await db.first<{
+      metadata_source: string;
+      official_site_url: string | null;
       name: string;
       slug: string;
       source: string;
       source_id: string | null;
     }>(
-      `SELECT name, slug, source, source_id
+      `SELECT name, slug, source, source_id, metadata_source, official_site_url
        FROM games
        WHERE slug = ?`,
       "spiritvale",
@@ -120,6 +131,8 @@ async function main() {
 
     assert.ok(spiritVale, "SpiritVale seed should exist");
     assert.equal(spiritVale.name, "SpiritVale");
+    assert.equal(spiritVale.metadata_source, "inherited");
+    assert.equal(spiritVale.official_site_url, null);
     assert.equal(spiritVale.source, "steam");
     assert.equal(spiritVale.source_id, "3767850");
 
