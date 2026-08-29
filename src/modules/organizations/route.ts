@@ -569,6 +569,7 @@ function toOrganizationCard(
       memberCount: organization.activeMemberCount,
     },
     tags: [],
+    vanity: organization.vanity,
   };
 }
 

@@ -950,6 +950,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "vanity": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -962,7 +968,8 @@
           "name",
           "slug",
           "stats",
-          "tags"
+          "tags",
+          "vanity"
         ]
       },
       "OrganizationCardDisplay": {
