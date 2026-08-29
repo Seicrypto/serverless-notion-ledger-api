@@ -875,13 +875,85 @@
           "targetAssetId"
         ]
       },
-      "GameListResponse": {
+      "OfficialManagedGameResponse": {
+        "type": "object",
+        "properties": {
+          "game": {
+            "$ref": "#/components/schemas/OfficialManagedGame"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "game",
+          "message"
+        ]
+      },
+      "OfficialManagedGame": {
+        "type": "object",
+        "properties": {
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "metadataSource": {
+            "type": "string",
+            "enum": [
+              "inherited",
+              "official"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "officialSiteUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "iconUrl",
+          "id",
+          "metadataSource",
+          "name",
+          "officialSiteUrl"
+        ]
+      },
+      "OfficialUpdateGameMetadataRequest": {
+        "type": "object",
+        "properties": {
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "officialSiteUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          }
+        }
+      },
+      "PublicGameListResponse": {
         "type": "object",
         "properties": {
           "games": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Game"
+              "$ref": "#/components/schemas/PublicGame"
             }
           }
         },
@@ -889,7 +961,7 @@
           "games"
         ]
       },
-      "Game": {
+      "PublicGame": {
         "type": "object",
         "properties": {
           "description": {
@@ -910,6 +982,13 @@
           },
           "isActive": {
             "type": "boolean"
+          },
+          "metadataSource": {
+            "type": "string",
+            "enum": [
+              "inherited",
+              "official"
+            ]
           },
           "name": {
             "type": "string"
@@ -955,6 +1034,184 @@
           "iconUrl",
           "id",
           "isActive",
+          "metadataSource",
+          "name",
+          "officialSiteUrl",
+          "resolvedIconUrl",
+          "slug",
+          "source",
+          "sourceId",
+          "type"
+        ]
+      },
+      "PublicGameSearchResponse": {
+        "type": "object",
+        "properties": {
+          "games": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicGameSearchItem"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/GamesOffsetPagination"
+          }
+        },
+        "required": [
+          "games",
+          "pagination"
+        ]
+      },
+      "PublicGameSearchItem": {
+        "type": "object",
+        "properties": {
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "officialSiteUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "iconUrl",
+          "id",
+          "name",
+          "officialSiteUrl"
+        ]
+      },
+      "GamesOffsetPagination": {
+        "type": "object",
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "hasMore",
+          "limit",
+          "offset"
+        ]
+      },
+      "PublicGameDetailResponse": {
+        "type": "object",
+        "properties": {
+          "game": {
+            "$ref": "#/components/schemas/PublicGame"
+          }
+        },
+        "required": [
+          "game"
+        ]
+      },
+      "GameListResponse": {
+        "type": "object",
+        "properties": {
+          "games": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Game"
+            }
+          }
+        },
+        "required": [
+          "games"
+        ]
+      },
+      "Game": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "metadataSource": {
+            "type": "string",
+            "enum": [
+              "inherited",
+              "official"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "officialSiteUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedIconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "slug": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "internal",
+              "steam"
+            ]
+          },
+          "sourceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "game",
+              "activity"
+            ]
+          }
+        },
+        "required": [
+          "description",
+          "iconUrl",
+          "id",
+          "isActive",
+          "metadataSource",
           "name",
           "officialSiteUrl",
           "resolvedIconUrl",
@@ -1249,6 +1506,13 @@
           "isPrimary": {
             "type": "boolean"
           },
+          "metadataSource": {
+            "type": "string",
+            "enum": [
+              "inherited",
+              "official"
+            ]
+          },
           "officialSiteUrl": {
             "type": [
               "string",
@@ -1289,6 +1553,7 @@
           "gameName",
           "gameSlug",
           "isPrimary",
+          "metadataSource",
           "officialSiteUrl",
           "resolvedIconUrl",
           "source",
@@ -1409,6 +1674,13 @@
           "isPrimary": {
             "type": "boolean"
           },
+          "metadataSource": {
+            "type": "string",
+            "enum": [
+              "inherited",
+              "official"
+            ]
+          },
           "officialSiteUrl": {
             "type": [
               "string",
@@ -1449,6 +1721,7 @@
           "gameName",
           "gameSlug",
           "isPrimary",
+          "metadataSource",
           "officialSiteUrl",
           "resolvedIconUrl",
           "source",
@@ -5738,6 +6011,242 @@
           },
           "409": {
             "description": "Merge conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/official/games/{gameId}": {
+      "patch": {
+        "tags": [
+          "Official"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "gameId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfficialUpdateGameMetadataRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Game metadata updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficialManagedGameResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Official staff access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/games": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "includeInactive",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List available games.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicGameListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/games/search": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": true,
+            "name": "name",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search games by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicGameSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/games/{gameId}": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "gameId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Game detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicGameDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game not found.",
             "content": {
               "application/json": {
                 "schema": {

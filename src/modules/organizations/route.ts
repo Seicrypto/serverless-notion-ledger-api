@@ -174,6 +174,7 @@ function toGameResponse(game: Awaited<ReturnType<GamesRepository["create"]>>) {
     iconUrl: game.icon_url,
     id: game.id,
     isActive: game.is_active === 1,
+    metadataSource: game.metadata_source,
     name: game.name,
     officialSiteUrl: game.official_site_url,
     resolvedIconUrl: resolveGameIconUrl(game.icon_url, game.official_site_url),
@@ -211,6 +212,7 @@ type OrganizationGameRow = {
   game_slug: string;
   icon_url: string | null;
   is_primary: number;
+  metadata_source: "inherited" | "official";
   official_site_url: string | null;
   organization_id: number;
   source: "internal" | "steam";
@@ -245,6 +247,7 @@ function toOrganizationGameSummary(game: OrganizationGameRow) {
     gameSlug: game.game_slug,
     iconUrl: game.icon_url,
     isPrimary: game.is_primary === 1,
+    metadataSource: game.metadata_source,
     officialSiteUrl: game.official_site_url,
     resolvedIconUrl: resolveGameIconUrl(game.icon_url, game.official_site_url),
     source: game.source,
@@ -521,6 +524,7 @@ async function buildOrganizationSearchItems(
     game_slug: string;
     icon_url: string | null;
     is_primary: number;
+    metadata_source: "inherited" | "official";
     official_site_url: string | null;
     organization_id: number;
     source: "internal" | "steam";
@@ -535,6 +539,7 @@ async function buildOrganizationSearchItems(
        g.name AS game_name,
        g.slug AS game_slug,
        g.icon_url,
+       g.metadata_source,
        g.official_site_url,
        g.source,
        g.source_id,
@@ -555,6 +560,7 @@ async function buildOrganizationSearchItems(
        g.name AS game_name,
        g.slug AS game_slug,
        g.icon_url,
+       g.metadata_source,
        g.official_site_url,
        g.source,
        g.source_id,
@@ -729,6 +735,10 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
   const limit = parsed.data.limit ?? 10;
   const offset = parsed.data.offset ?? 0;
   bindings.push(limit + 1, offset);
+  const orderByClause =
+    parsed.data.gameId || parsed.data.gameSlug
+      ? "ORDER BY CASE WHEN og.is_primary = 1 THEN 0 ELSE 1 END ASC, o.id ASC"
+      : "ORDER BY o.id ASC";
 
   const rows = await db.all<{
     created_at: string;
@@ -749,7 +759,7 @@ organizationsRouter.openapi(listOrganizationsRoute, async (c) => {
      LEFT JOIN games g ON g.id = og.game_id
      WHERE o.deleted_at IS NULL
      ${whereClauses.length > 0 ? `AND ${whereClauses.join(" AND ")}` : ""}
-     ORDER BY o.id ASC
+     ${orderByClause}
      LIMIT ?
      OFFSET ?`,
     ...bindings,
@@ -957,6 +967,7 @@ organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
             icon_url: string | null;
             id: number;
             is_active: number;
+            metadata_source: "inherited" | "official" | null;
             name: string;
             notes: string | null;
             official_site_url: string | null;
@@ -977,6 +988,7 @@ organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
                g.name AS game_name,
                g.slug AS game_slug,
                g.icon_url,
+               g.metadata_source,
                g.official_site_url,
                g.source,
                g.source_id,
@@ -1007,6 +1019,7 @@ organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
                   game_slug: character.game_slug,
                   icon_url: character.icon_url,
                   is_primary: character.organization_game_is_primary ?? 0,
+                  metadata_source: character.metadata_source ?? "inherited",
                   official_site_url: character.official_site_url,
                   organization_id: character.organization_id,
                   source: character.source,
@@ -1086,6 +1099,7 @@ organizationsRouter.openapi(organizationManagementCharactersRoute, async (c) => 
       id: number;
       icon_url: string | null;
       is_primary: number | null;
+      metadata_source: "inherited" | "official" | null;
       name: string;
       notes: string | null;
       official_site_url: string | null;
@@ -1111,6 +1125,7 @@ organizationsRouter.openapi(organizationManagementCharactersRoute, async (c) => 
          g.name AS game_name,
          g.slug AS game_slug,
          g.icon_url,
+         g.metadata_source,
          g.official_site_url,
          g.source,
          g.source_id,
@@ -1154,6 +1169,7 @@ organizationsRouter.openapi(organizationManagementCharactersRoute, async (c) => 
                   game_slug: character.game_slug,
                   icon_url: character.icon_url,
                   is_primary: character.is_primary ?? 0,
+                  metadata_source: character.metadata_source ?? "inherited",
                   official_site_url: character.official_site_url,
                   organization_id: organization.id,
                   source: character.source,
@@ -1273,6 +1289,7 @@ organizationsRouter.openapi(organizationPendingMembersRoute, async (c) => {
       game_name: string | null;
       game_slug: string | null;
       icon_url: string | null;
+      metadata_source: "inherited" | "official" | null;
       official_site_url: string | null;
       organization_game_display_name: string | null;
       organization_game_is_primary: number | null;
@@ -1300,6 +1317,7 @@ organizationsRouter.openapi(organizationPendingMembersRoute, async (c) => {
          g.name AS game_name,
          g.slug AS game_slug,
          g.icon_url,
+         g.metadata_source,
          g.official_site_url,
          g.source,
          g.source_id,
@@ -1344,6 +1362,7 @@ organizationsRouter.openapi(organizationPendingMembersRoute, async (c) => {
                           game_slug: member.game_slug,
                           icon_url: member.icon_url,
                           is_primary: member.organization_game_is_primary ?? 0,
+                          metadata_source: member.metadata_source ?? "inherited",
                           official_site_url: member.official_site_url,
                           organization_id: organization.id,
                           source: member.source,
@@ -1403,6 +1422,7 @@ organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
       id: number;
       icon_url: string | null;
       is_primary: number | null;
+      metadata_source: "inherited" | "official" | null;
       name: string;
       notes: string | null;
       official_site_url: string | null;
@@ -1425,6 +1445,7 @@ organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
          g.name AS game_name,
          g.slug AS game_slug,
          g.icon_url,
+         g.metadata_source,
          g.official_site_url,
          g.source,
          g.source_id,
@@ -1463,6 +1484,7 @@ organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
                   game_slug: character.game_slug,
                   icon_url: character.icon_url,
                   is_primary: character.is_primary ?? 0,
+                  metadata_source: character.metadata_source ?? "inherited",
                   official_site_url: character.official_site_url,
                   organization_id: organization.id,
                   source: character.source,
