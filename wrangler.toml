@@ -12,6 +12,7 @@ enabled = true
 [vars]
 APP_ENV = "production"
 APP_BASE_URL = "https://notion-ledger-api.seikanchintw.workers.dev"
+APP_FRONTEND_URL = "https://raid-ledger.pages.dev/"
 NOTION_API_BASE_URL = "https://api.notion.com"
 NOTION_API_VERSION = "2022-06-28"
 OFFICIAL_ADMIN_EMAILS = "seikanchintw@gmail.com"
