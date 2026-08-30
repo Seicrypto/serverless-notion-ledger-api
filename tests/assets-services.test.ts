@@ -45,8 +45,16 @@ test("organization asset middleware pattern covers nested resolve routes", async
 });
 
 test("mounted organization asset router applies middleware before resolve handler", async () => {
-  const root = new Hono();
-  const child = new Hono();
+  const root = new Hono<{
+    Variables: {
+      organization: { id: number };
+    };
+  }>();
+  const child = new Hono<{
+    Variables: {
+      organization: { id: number };
+    };
+  }>();
 
   child.use("/:organization/assets/*", async (c, next) => {
     c.set("organization", { id: Number(c.req.param("organization")) });
@@ -61,7 +69,7 @@ test("mounted organization asset router applies middleware before resolve handle
   const response = await root.request("/organizations/3/assets/resolve", {
     method: "POST",
   });
-  const body = await response.json();
+  const body = (await response.json()) as { organizationId: number };
 
   assert.equal(response.status, 200);
   assert.equal(body.organizationId, 3);
