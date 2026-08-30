@@ -6,6 +6,9 @@ import { cacheKeys } from "../../lib/cache-keys";
 import { AppError, buildErrorResponseBody, ensureRequestId } from "../../lib/errors";
 import { getSessionCookie } from "../../lib/session-cookie";
 import { SnapshotCacheService } from "../../services/cache/snapshot-cache-service";
+import { CharactersRepository } from "../../repositories/characters-repository";
+import { EventParticipantsRepository } from "../../repositories/event-participants-repository";
+import { EventsRepository } from "../../repositories/events-repository";
 import { GamesRepository } from "../../repositories/games-repository";
 import { OrganizationMembersRepository } from "../../repositories/organization-members-repository";
 import { OrganizationGamesRepository } from "../../repositories/organization-games-repository";
@@ -14,6 +17,7 @@ import type {
   AssetRecord,
   EventRecord,
   EventStatus,
+  EventParticipantRecord,
   SettlementAllocationRecord,
   SettlementClaimRecord,
   SettlementRecord,
@@ -99,6 +103,34 @@ function validationErrorFromIssues(
   };
 }
 
+type EventParticipantDetail = {
+  character: {
+    id: number;
+    name: string;
+    slug: string | null;
+    vanity: string | null;
+  } | null;
+  characterId: number | null;
+  createdAt: string;
+  eventId: number;
+  id: number;
+  joinedAt: string | null;
+  leftAt: string | null;
+  roleLabel: string | null;
+  updatedAt: string;
+  weight: number;
+};
+
+type SettlementParticipantValidation = {
+  eventParticipantCharacterIds: number[];
+  eventParticipantCount: number;
+  hasParticipantMismatch: boolean;
+  omittedParticipantCharacterIds: number[];
+  recipientCharacterIds: number[];
+  requiresConfirmation: boolean;
+  unexpectedRecipientCharacterIds: number[];
+};
+
 type PublicOrganizationContext = {
   id: number;
   name: string;
@@ -109,6 +141,160 @@ type OrganizationViewer = {
   isMember: boolean;
   userId: number | null;
 };
+
+function toEventParticipantResponse(
+  participant: EventParticipantRecord & {
+    character_name?: string | null;
+    character_slug?: string | null;
+    character_vanity?: string | null;
+  },
+): EventParticipantDetail {
+  return {
+    character:
+      participant.character_id === null
+        ? null
+        : {
+            id: participant.character_id,
+            name: participant.character_name ?? "",
+            slug: participant.character_slug ?? null,
+            vanity: participant.character_vanity ?? null,
+          },
+    characterId: participant.character_id,
+    createdAt: participant.created_at,
+    eventId: participant.event_id,
+    id: participant.id,
+    joinedAt: participant.joined_at,
+    leftAt: participant.left_at,
+    roleLabel: participant.role_label,
+    updatedAt: participant.updated_at,
+    weight: participant.weight,
+  };
+}
+
+async function listEventParticipants(
+  db: D1Client,
+  eventId: number,
+  organizationId: number,
+): Promise<EventParticipantDetail[]> {
+  const rows = await db.all<
+    EventParticipantRecord & {
+      character_name: string | null;
+      character_slug: string | null;
+      character_vanity: string | null;
+    }
+  >(
+    `SELECT
+       ep.*,
+       c.name AS character_name,
+       c.slug AS character_slug,
+       c.vanity AS character_vanity
+     FROM event_participants ep
+     LEFT JOIN characters c
+       ON c.id = ep.character_id
+      AND c.organization_id = ?
+     WHERE ep.event_id = ?
+     ORDER BY ep.id ASC`,
+    organizationId,
+    eventId,
+  );
+
+  return rows.map(toEventParticipantResponse);
+}
+
+async function buildEventDetailResponse(db: D1Client, event: EventRecord) {
+  return {
+    ...toEventResponse(event),
+    participants: await listEventParticipants(db, event.id, event.organization_id),
+  };
+}
+
+async function validateEventParticipantCharacters(
+  db: D1Client,
+  organizationId: number,
+  participants: Array<{
+    characterId?: number | null;
+  }>,
+) {
+  const characters = new CharactersRepository(db);
+  for (const participant of participants) {
+    if (participant.characterId === undefined || participant.characterId === null) {
+      continue;
+    }
+
+    await requireLedgerCharacter(db, participant.characterId, organizationId);
+    const character = await characters.findById(participant.characterId);
+    if (!character || character.organization_id !== organizationId) {
+      throw new AppError("Character not found", 404, {
+        code: "CHARACTER_NOT_FOUND",
+      });
+    }
+  }
+}
+
+async function replaceEventParticipants(
+  db: D1Client,
+  eventId: number,
+  organizationId: number,
+  participants: Array<{
+    characterId?: number | null;
+    joinedAt?: string | null;
+    leftAt?: string | null;
+    roleLabel?: string | null;
+    weight?: number;
+  }>,
+) {
+  await validateEventParticipantCharacters(db, organizationId, participants);
+  await db.run(`DELETE FROM event_participants WHERE event_id = ?`, eventId);
+
+  const repository = new EventParticipantsRepository(db);
+  for (const participant of participants) {
+    await repository.create({
+      characterId: participant.characterId ?? null,
+      eventId,
+      joinedAt: participant.joinedAt ?? null,
+      leftAt: participant.leftAt ?? null,
+      roleLabel: participant.roleLabel ?? null,
+      weight: participant.weight ?? 1,
+    });
+  }
+}
+
+async function computeSettlementParticipantValidation(
+  db: D1Client,
+  eventId: number,
+  recipientCharacterIds: number[],
+): Promise<SettlementParticipantValidation> {
+  const participants = await new EventParticipantsRepository(db).listByEvent(eventId);
+  const eventParticipantCharacterIds = [
+    ...new Set(
+      participants
+        .map((participant) => participant.character_id)
+        .filter((value): value is number => value !== null),
+    ),
+  ];
+  const recipientSet = new Set(recipientCharacterIds);
+  const participantSet = new Set(eventParticipantCharacterIds);
+  const unexpectedRecipientCharacterIds = recipientCharacterIds.filter(
+    (characterId) => !participantSet.has(characterId),
+  );
+  const omittedParticipantCharacterIds = eventParticipantCharacterIds.filter(
+    (characterId) => !recipientSet.has(characterId),
+  );
+  const hasParticipantMismatch =
+    unexpectedRecipientCharacterIds.length > 0 || omittedParticipantCharacterIds.length > 0;
+  const requiresConfirmation =
+    eventParticipantCharacterIds.length === 0 || hasParticipantMismatch;
+
+  return {
+    eventParticipantCharacterIds,
+    eventParticipantCount: eventParticipantCharacterIds.length,
+    hasParticipantMismatch,
+    omittedParticipantCharacterIds,
+    recipientCharacterIds,
+    requiresConfirmation,
+    unexpectedRecipientCharacterIds,
+  };
+}
 
 organizationLedgerRouter.use(
   "/{organization}/ledger/events",
@@ -393,7 +579,7 @@ organizationLedgerRouter.openapi(getLedgerEventRoute, async (c) => {
 
     return c.json(
       {
-        event: toEventResponse(event),
+        event: await buildEventDetailResponse(db, event),
         message: "Event retrieved successfully.",
       },
       200,
@@ -497,10 +683,16 @@ organizationLedgerRouter.openapi(createLedgerEventRoute, async (c) => {
       sourceType: parsed.data.sourceType,
       title: parsed.data.title,
     });
+    await replaceEventParticipants(
+      db,
+      event.id,
+      organization.id,
+      parsed.data.participants ?? [],
+    );
 
     return c.json(
       {
-        event: toEventResponse(event),
+        event: await buildEventDetailResponse(db, event),
         message: "Event created successfully.",
       },
       201,
@@ -547,12 +739,20 @@ organizationLedgerRouter.openapi(createLedgerEventBatchRoute, async (c) => {
         sourceType: item.sourceType,
         title: item.title,
       });
+      await replaceEventParticipants(
+        db,
+        event.id,
+        organization.id,
+        item.participants ?? [],
+      );
       events.push(event);
     }
 
     return c.json(
       {
-        events: events.map(toEventResponse),
+        events: await Promise.all(
+          events.map((event) => buildEventDetailResponse(db, event)),
+        ),
         message: "Events created successfully.",
       },
       201,
@@ -611,9 +811,7 @@ organizationLedgerRouter.openapi(updateLedgerEventRoute, async (c) => {
       }
     }
 
-    const updated = await new (await import("../../repositories/events-repository")).EventsRepository(
-      db,
-    ).update(event.id, {
+    const updated = await new EventsRepository(db).update(event.id, {
       assetId: bodyParsed.data.assetId,
       gameId: bodyParsed.data.gameId,
       holderRef: bodyParsed.data.holderRef,
@@ -622,10 +820,18 @@ organizationLedgerRouter.openapi(updateLedgerEventRoute, async (c) => {
       occurredAt: bodyParsed.data.occurredAt,
       title: bodyParsed.data.title,
     });
+    if (bodyParsed.data.participants !== undefined) {
+      await replaceEventParticipants(
+        db,
+        event.id,
+        organization.id,
+        bodyParsed.data.participants,
+      );
+    }
 
     return c.json(
       {
-        event: toEventResponse(updated),
+        event: await buildEventDetailResponse(db, updated),
         message: "Event updated successfully.",
       },
       200,
@@ -674,7 +880,7 @@ organizationLedgerRouter.openapi(updateLedgerEventStatusRoute, async (c) => {
 
     return c.json(
       {
-        event: toEventResponse(updated),
+        event: await buildEventDetailResponse(db, updated),
         message: "Event status updated successfully.",
       },
       200,
@@ -979,8 +1185,33 @@ organizationLedgerRouter.openapi(createLedgerSettlementRoute, async (c) => {
     assertLedgerManager(membership);
 
     const db = new D1Client(c.env.APP_DB);
+    let participantValidation: SettlementParticipantValidation | null = null;
     if (parsed.data.eventId) {
       await requireLedgerEvent(db, parsed.data.eventId, organization.id);
+      participantValidation = await computeSettlementParticipantValidation(
+        db,
+        parsed.data.eventId,
+        parsed.data.recipientCharacterIds ?? [],
+      );
+
+      if (
+        participantValidation.requiresConfirmation &&
+        parsed.data.confirmParticipantException !== true
+      ) {
+        return c.json(
+          {
+            ...buildSettlementParticipantConflictResponse(
+              c,
+              participantValidation.eventParticipantCount === 0
+                ? "This event has no recorded participants. Confirm the exception before creating a settlement."
+                : "Settlement recipients do not match the event participants. Confirm the exception before creating a settlement.",
+              participantValidation,
+            ),
+            requestId: ensureRequestId(c),
+          },
+          409,
+        );
+      }
     }
 
     const settlement = await new SettlementLifecycleService(db).createDraftSettlement({
@@ -996,6 +1227,13 @@ organizationLedgerRouter.openapi(createLedgerSettlementRoute, async (c) => {
       netAmount: parsed.data.netAmount,
       notes: parsed.data.notes,
       organizationId: organization.id,
+      participantExceptionConfirmed:
+        participantValidation?.requiresConfirmation === true &&
+        parsed.data.confirmParticipantException === true,
+      participantExceptionReason:
+        participantValidation?.requiresConfirmation === true
+          ? parsed.data.participantExceptionReason ?? null
+          : null,
       payerRef: parsed.data.payerRef,
       payerType: parsed.data.payerType,
       settlementType: parsed.data.settlementType,
@@ -1007,6 +1245,7 @@ organizationLedgerRouter.openapi(createLedgerSettlementRoute, async (c) => {
       {
         message: "Settlement created successfully.",
         settlement: toSettlementResponse(settlement),
+        participantValidation,
       },
       201,
     );
@@ -1057,6 +1296,7 @@ organizationLedgerRouter.openapi(updateLedgerSettlementStatusRoute, async (c) =>
       {
         message: "Settlement status updated successfully.",
         settlement: toSettlementResponse(updated),
+        participantValidation: null,
       },
       200,
     );
@@ -1400,6 +1640,20 @@ async function readThroughDashboardSnapshot<T>(
   return payload;
 }
 
+function buildSettlementParticipantConflictResponse(
+  c: { req: { header(name: string): string | undefined | null } },
+  message: string,
+  participantValidation: SettlementParticipantValidation,
+) {
+  return {
+    code: "SETTLEMENT_PARTICIPANT_CONFIRMATION_REQUIRED",
+    error: "Settlement participant confirmation required",
+    message,
+    participantValidation,
+    requestId: c.req.header("X-Request-Id") ?? "",
+  };
+}
+
 function toEventResponse(event: EventRecord) {
   return {
     assetId: event.asset_id,
@@ -1437,6 +1691,8 @@ function toSettlementResponse(settlement: SettlementRecord) {
     netAmount: settlement.net_amount,
     notes: settlement.notes,
     organizationId: settlement.organization_id,
+    participantExceptionConfirmed: settlement.participant_exception_confirmed === 1,
+    participantExceptionReason: settlement.participant_exception_reason,
     payerRef: settlement.payer_ref,
     payerType: settlement.payer_type,
     settlementKey: settlement.settlement_key,

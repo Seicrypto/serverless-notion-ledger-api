@@ -540,6 +540,8 @@ export interface SettlementRecord {
   net_amount: number;
   notes: string | null;
   organization_id: number;
+  participant_exception_confirmed: number;
+  participant_exception_reason: string | null;
   payer_ref: string | null;
   payer_type: SettlementPayerType;
   settlement_key: string;
@@ -563,6 +565,8 @@ export interface CreateSettlementInput {
   netAmount: number;
   notes?: string | null;
   organizationId: number;
+  participantExceptionConfirmed?: boolean;
+  participantExceptionReason?: string | null;
   payerRef?: string | null;
   payerType?: SettlementPayerType;
   settlementKey: string;
@@ -583,6 +587,8 @@ export interface UpdateSettlementInput {
   grossAmount?: number;
   netAmount?: number;
   notes?: string | null;
+  participantExceptionConfirmed?: boolean;
+  participantExceptionReason?: string | null;
   payerRef?: string | null;
   payerType?: SettlementPayerType;
   settlementKey?: string;

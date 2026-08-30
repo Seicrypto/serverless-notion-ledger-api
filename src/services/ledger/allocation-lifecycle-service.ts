@@ -1,5 +1,6 @@
 import type { DatabaseClient } from "../../infrastructure/database/database-client";
 import { ConflictError, NotFoundError } from "../../lib/errors";
+import { EventParticipantsRepository } from "../../repositories/event-participants-repository";
 import { SettlementAllocationsRepository } from "../../repositories/settlement-allocations-repository";
 import { SettlementsRepository } from "../../repositories/settlements-repository";
 import type {
@@ -28,6 +29,10 @@ export class AllocationLifecycleService implements AllocationLifecyclePort {
           code: "SETTLEMENT_NOT_ALLOCATION_EDITABLE",
         },
       );
+    }
+
+    if (input.characterId !== undefined && input.characterId !== null) {
+      await this.assertEventParticipantAllowed(settlement, input.characterId);
     }
 
     return repository.create({
@@ -132,5 +137,41 @@ export class AllocationLifecycleService implements AllocationLifecyclePort {
     }
 
     return settlement;
+  }
+
+  private async assertEventParticipantAllowed(
+    settlement: SettlementRecord,
+    characterId: number,
+  ) {
+    if (!settlement.event_id || settlement.participant_exception_confirmed === 1) {
+      return;
+    }
+
+    const participants = await new EventParticipantsRepository(this.db).listByEvent(
+      settlement.event_id,
+    );
+    const participantCharacterIds = new Set(
+      participants
+        .map((participant) => participant.character_id)
+        .filter((value): value is number => value !== null),
+    );
+
+    if (participantCharacterIds.size === 0) {
+      throw new ConflictError(
+        "Settlement requires recorded event participants before allocations can be created",
+        {
+          code: "SETTLEMENT_EVENT_PARTICIPANTS_REQUIRED",
+        },
+      );
+    }
+
+    if (!participantCharacterIds.has(characterId)) {
+      throw new ConflictError(
+        "Allocation character must match a recorded event participant",
+        {
+          code: "SETTLEMENT_EVENT_PARTICIPANT_MISMATCH",
+        },
+      );
+    }
   }
 }

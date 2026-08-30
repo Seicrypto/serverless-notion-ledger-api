@@ -3772,7 +3772,7 @@
         "type": "object",
         "properties": {
           "event": {
-            "$ref": "#/components/schemas/LedgerEvent"
+            "$ref": "#/components/schemas/LedgerEventDetail"
           },
           "message": {
             "type": "string"
@@ -3781,6 +3781,122 @@
         "required": [
           "event",
           "message"
+        ]
+      },
+      "LedgerEventDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LedgerEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "participants": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/LedgerEventParticipant"
+                }
+              }
+            },
+            "required": [
+              "participants"
+            ]
+          }
+        ]
+      },
+      "LedgerEventParticipant": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "$ref": "#/components/schemas/LedgerEventParticipantCharacter"
+          },
+          "characterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "joinedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "leftAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "roleLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "character",
+          "characterId",
+          "createdAt",
+          "eventId",
+          "id",
+          "joinedAt",
+          "leftAt",
+          "roleLabel",
+          "updatedAt",
+          "weight"
+        ]
+      },
+      "LedgerEventParticipantCharacter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vanity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "vanity"
         ]
       },
       "LedgerClaimableRecipientSummaryListResponse": {
@@ -4114,6 +4230,47 @@
             "type": "string",
             "format": "date-time"
           },
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "characterId": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "exclusiveMinimum": 0
+                },
+                "joinedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "leftAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "roleLabel": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 120
+                },
+                "weight": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            },
+            "maxItems": 200
+          },
           "sourceType": {
             "type": "string",
             "enum": [
@@ -4139,7 +4296,7 @@
           "events": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LedgerEvent"
+              "$ref": "#/components/schemas/LedgerEventDetail"
             }
           },
           "message": {
@@ -4211,6 +4368,47 @@
           "occurredAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "characterId": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "exclusiveMinimum": 0
+                },
+                "joinedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "leftAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "roleLabel": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 120
+                },
+                "weight": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            },
+            "maxItems": 200
           },
           "title": {
             "type": "string",
@@ -4330,6 +4528,15 @@
             "type": "integer",
             "exclusiveMinimum": 0
           },
+          "participantExceptionConfirmed": {
+            "type": "boolean"
+          },
+          "participantExceptionReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "payerRef": {
             "type": [
               "string",
@@ -4398,6 +4605,8 @@
           "netAmount",
           "notes",
           "organizationId",
+          "participantExceptionConfirmed",
+          "participantExceptionReason",
           "payerRef",
           "payerType",
           "settlementKey",
@@ -4941,11 +5150,100 @@
           },
           "settlement": {
             "$ref": "#/components/schemas/LedgerSettlement"
+          },
+          "participantValidation": {
+            "$ref": "#/components/schemas/LedgerSettlementParticipantValidation"
           }
         },
         "required": [
           "message",
-          "settlement"
+          "settlement",
+          "participantValidation"
+        ]
+      },
+      "LedgerSettlementParticipantValidation": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "eventParticipantCharacterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "eventParticipantCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasParticipantMismatch": {
+            "type": "boolean"
+          },
+          "omittedParticipantCharacterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "recipientCharacterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "requiresConfirmation": {
+            "type": "boolean"
+          },
+          "unexpectedRecipientCharacterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "required": [
+          "eventParticipantCharacterIds",
+          "eventParticipantCount",
+          "hasParticipantMismatch",
+          "omittedParticipantCharacterIds",
+          "recipientCharacterIds",
+          "requiresConfirmation",
+          "unexpectedRecipientCharacterIds"
+        ]
+      },
+      "LedgerSettlementParticipantConflictResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "SETTLEMENT_PARTICIPANT_CONFIRMATION_REQUIRED"
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "participantValidation": {
+            "$ref": "#/components/schemas/LedgerSettlementParticipantValidation"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "error",
+          "message",
+          "participantValidation",
+          "requestId"
         ]
       },
       "CreateLedgerSettlementRequest": {
@@ -5013,6 +5311,9 @@
             ],
             "maxLength": 4000
           },
+          "confirmParticipantException": {
+            "type": "boolean"
+          },
           "payerRef": {
             "type": [
               "string",
@@ -5028,6 +5329,21 @@
               "external",
               "custom"
             ]
+          },
+          "participantExceptionReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "recipientCharacterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maxItems": 200
           },
           "settlementType": {
             "type": "string",
@@ -11547,11 +11863,18 @@
             }
           },
           "409": {
-            "description": "Business rule conflict.",
+            "description": "Business rule conflict or participant confirmation required.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LedgerSettlementParticipantConflictResponse"
+                    }
+                  ]
                 }
               }
             }

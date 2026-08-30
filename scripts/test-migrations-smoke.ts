@@ -108,6 +108,8 @@ async function main() {
       "fee_rule_key",
       "allocation_mode",
       "unit_asset_id",
+      "participant_exception_confirmed",
+      "participant_exception_reason",
     ]);
     await assertHasColumns(db, "settlement_allocations", [
       "weight",

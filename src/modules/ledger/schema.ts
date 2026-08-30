@@ -36,6 +36,37 @@ const eventSchema = z
   })
   .openapi("LedgerEvent");
 
+const eventParticipantCharacterSchema = z
+  .object({
+    id: z.number().int().positive(),
+    name: z.string(),
+    slug: z.string().nullable(),
+    vanity: z.string().nullable(),
+  })
+  .nullable()
+  .openapi("LedgerEventParticipantCharacter");
+
+const eventParticipantSchema = z
+  .object({
+    character: eventParticipantCharacterSchema,
+    characterId: z.number().int().positive().nullable(),
+    createdAt: z.string(),
+    eventId: z.number().int().positive(),
+    id: z.number().int().positive(),
+    joinedAt: z.string().nullable(),
+    leftAt: z.string().nullable(),
+    roleLabel: z.string().nullable(),
+    updatedAt: z.string(),
+    weight: z.number(),
+  })
+  .openapi("LedgerEventParticipant");
+
+const eventDetailSchema = eventSchema
+  .extend({
+    participants: z.array(eventParticipantSchema),
+  })
+  .openapi("LedgerEventDetail");
+
 const settlementSchema = z
   .object({
     allocationMode: z.enum(["equal", "weight", "manual"]),
@@ -52,6 +83,8 @@ const settlementSchema = z
     netAmount: z.number(),
     notes: z.string().nullable(),
     organizationId: z.number().int().positive(),
+    participantExceptionConfirmed: z.boolean(),
+    participantExceptionReason: z.string().nullable(),
     payerRef: z.string().nullable(),
     payerType: z.enum(["character", "org_treasury", "external", "custom"]),
     settlementKey: z.string(),
@@ -69,6 +102,18 @@ const settlementSchema = z
     updatedAt: z.string(),
   })
   .openapi("LedgerSettlement");
+
+const settlementParticipantValidationSchema = z
+  .object({
+    eventParticipantCharacterIds: z.array(z.number().int().positive()),
+    eventParticipantCount: z.number().int().nonnegative(),
+    hasParticipantMismatch: z.boolean(),
+    omittedParticipantCharacterIds: z.array(z.number().int().positive()),
+    recipientCharacterIds: z.array(z.number().int().positive()),
+    requiresConfirmation: z.boolean(),
+    unexpectedRecipientCharacterIds: z.array(z.number().int().positive()),
+  })
+  .openapi("LedgerSettlementParticipantValidation");
 
 const allocationSchema = z
   .object({
@@ -150,6 +195,18 @@ const createEventRequestSchema = z
       .optional(),
     notes: z.string().trim().max(4000).nullable().optional(),
     occurredAt: z.string().datetime(),
+    participants: z
+      .array(
+        z.object({
+          characterId: z.number().int().positive().nullable().optional(),
+          joinedAt: z.string().datetime().nullable().optional(),
+          leftAt: z.string().datetime().nullable().optional(),
+          roleLabel: z.string().trim().max(120).nullable().optional(),
+          weight: z.number().positive().optional(),
+        }),
+      )
+      .max(200)
+      .optional(),
     sourceType: z.enum(["manual", "api", "import"]).optional(),
     title: z.string().trim().min(1).max(160),
   })
@@ -165,6 +222,18 @@ const updateEventRequestSchema = z
       .optional(),
     notes: z.string().trim().max(4000).nullable().optional(),
     occurredAt: z.string().datetime().optional(),
+    participants: z
+      .array(
+        z.object({
+          characterId: z.number().int().positive().nullable().optional(),
+          joinedAt: z.string().datetime().nullable().optional(),
+          leftAt: z.string().datetime().nullable().optional(),
+          roleLabel: z.string().trim().max(120).nullable().optional(),
+          weight: z.number().positive().optional(),
+        }),
+      )
+      .max(200)
+      .optional(),
     title: z.string().trim().min(1).max(160).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
@@ -180,7 +249,7 @@ const createEventBatchRequestSchema = z
 
 const createEventBatchResponseSchema = z
   .object({
-    events: z.array(eventSchema),
+    events: z.array(eventDetailSchema),
     message: z.string(),
   })
   .openapi("CreateLedgerEventBatchResponse");
@@ -203,8 +272,11 @@ const createSettlementRequestSchema = z
     grossAmount: z.number().nonnegative(),
     netAmount: z.number().nonnegative(),
     notes: z.string().trim().max(4000).nullable().optional(),
+    confirmParticipantException: z.boolean().optional(),
     payerRef: z.string().trim().max(255).nullable().optional(),
     payerType: z.enum(["character", "org_treasury", "external", "custom"]).optional(),
+    participantExceptionReason: z.string().trim().max(1000).nullable().optional(),
+    recipientCharacterIds: z.array(z.number().int().positive()).max(200).optional(),
     settlementType: z
       .enum(["sale", "bonus", "salary", "reward", "subsidy", "adjustment"])
       .optional(),
@@ -254,7 +326,7 @@ const updateClaimStatusRequestSchema = z
 
 const eventResponseSchema = z
   .object({
-    event: eventSchema,
+    event: eventDetailSchema,
     message: z.string(),
   })
   .openapi("LedgerEventResponse");
@@ -263,6 +335,7 @@ const settlementResponseSchema = z
   .object({
     message: z.string(),
     settlement: settlementSchema,
+    participantValidation: settlementParticipantValidationSchema.nullable(),
   })
   .openapi("LedgerSettlementResponse");
 
@@ -519,6 +592,16 @@ const createSettlementDisbursementRequestSchema = z
     notes: z.string().trim().max(4000).nullable().optional(),
   })
   .openapi("CreateSettlementDisbursementRequest");
+
+const settlementParticipantConflictResponseSchema = z
+  .object({
+    code: z.literal("SETTLEMENT_PARTICIPANT_CONFIRMATION_REQUIRED"),
+    error: z.string(),
+    message: z.string(),
+    participantValidation: settlementParticipantValidationSchema,
+    requestId: z.string(),
+  })
+  .openapi("LedgerSettlementParticipantConflictResponse");
 
 const settlementDisbursementResponseSchema = z
   .object({
@@ -908,7 +991,14 @@ export const createLedgerSettlementRoute = createRoute({
     401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },
     404: { content: { "application/json": { schema: errorSchema } }, description: "Related record not found." },
-    409: { content: { "application/json": { schema: errorSchema } }, description: "Business rule conflict." },
+    409: {
+      content: {
+        "application/json": {
+          schema: z.union([errorSchema, settlementParticipantConflictResponseSchema]),
+        },
+      },
+      description: "Business rule conflict or participant confirmation required.",
+    },
     422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
   },
 });
