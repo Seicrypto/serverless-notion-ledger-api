@@ -94,7 +94,7 @@ async function listOrganizationAssets(
 }
 
 organizationAssetsRouter.use("/{organization}/assets", requireTargetOrganizationMember);
-organizationAssetsRouter.use("/{organization}/assets/{assetId}", requireTargetOrganizationMember);
+organizationAssetsRouter.use("/{organization}/assets/*", requireTargetOrganizationMember);
 organizationAssetsRouter.use("/{organization}/assets/{assetId}", async (c, next) => {
   if (c.req.method === "PATCH") {
     return requireTargetOrganizationManager(c, next);

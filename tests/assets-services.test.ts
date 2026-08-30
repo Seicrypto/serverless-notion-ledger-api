@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Hono } from "hono";
 import { AssetAliasesRepository } from "../src/repositories/asset-aliases-repository";
 import { AssetsRepository } from "../src/repositories/assets-repository";
 import { GamesRepository } from "../src/repositories/games-repository";
@@ -23,6 +24,28 @@ test("asset normalization keeps multilingual text while normalizing spacing and 
   assert.equal(service.normalizeName("HEART　GEM"), "heart gem");
   assert.equal(service.normalizeName("稀有－寶石"), "稀有 寶石");
   assert.equal(normalizeAssetName("Ｆｉｒｅ　Ｏｒｂ"), "fire orb");
+});
+
+test("organization asset middleware pattern covers nested resolve routes", async () => {
+  const app = new Hono();
+  let middlewareHits = 0;
+
+  app.use("/:organization/assets", async (_c, next) => {
+    middlewareHits += 1;
+    await next();
+  });
+  app.use("/:organization/assets/*", async (_c, next) => {
+    middlewareHits += 1;
+    await next();
+  });
+  app.post("/:organization/assets/resolve", (c) => c.json({ ok: true }));
+
+  const response = await app.request("/123/assets/resolve", {
+    method: "POST",
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(middlewareHits, 1);
 });
 
 test("asset duplicate detection returns exact canonical matches", async () => {
