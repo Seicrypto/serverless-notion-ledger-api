@@ -44,6 +44,37 @@ test("organization asset middleware pattern covers nested resolve routes", async
   assert.equal(middlewareHits, 1);
 });
 
+test("mounted organization asset router applies middleware before resolve handler", async () => {
+  const root = new Hono<{
+    Variables: {
+      organization: { id: number };
+    };
+  }>();
+  const child = new Hono<{
+    Variables: {
+      organization: { id: number };
+    };
+  }>();
+
+  child.use("/:organization/assets/*", async (c, next) => {
+    c.set("organization", { id: Number(c.req.param("organization")) });
+    await next();
+  });
+  child.post("/:organization/assets/resolve", (c) => {
+    const organization = c.get("organization");
+    return c.json({ organizationId: organization.id });
+  });
+  root.route("/organizations", child);
+
+  const response = await root.request("/organizations/3/assets/resolve", {
+    method: "POST",
+  });
+  const body = (await response.json()) as { organizationId: number };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.organizationId, 3);
+});
+
 test("asset duplicate detection returns exact canonical matches", async () => {
   const { cleanup, db } = await createTestDatabase();
   try {
