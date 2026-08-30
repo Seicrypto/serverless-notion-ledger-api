@@ -30,10 +30,6 @@ test("organization asset middleware pattern covers nested resolve routes", async
   const app = new Hono();
   let middlewareHits = 0;
 
-  app.use("/:organization/assets", async (_c, next) => {
-    middlewareHits += 1;
-    await next();
-  });
   app.use("/:organization/assets/*", async (_c, next) => {
     middlewareHits += 1;
     await next();
