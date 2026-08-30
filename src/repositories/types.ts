@@ -98,6 +98,11 @@ export type SettlementClaimMethod =
   | "other";
 export type SettlementClaimStatus = "recorded" | "confirmed" | "voided";
 export type MarketScopeType = "global" | "region" | "server" | "cluster";
+export type CharacterClaimRequestStatus =
+  | "pending_confirmation"
+  | "accepted"
+  | "declined"
+  | "cancelled";
 
 export interface UserRecord {
   created_at: string;
@@ -228,6 +233,33 @@ export interface UpdateCharacterInput {
   notes?: string | null;
   slug?: string | null;
   vanity?: string | null;
+}
+
+export interface CharacterClaimRequestRecord {
+  character_id: number;
+  created_at: string;
+  id: number;
+  organization_id: number;
+  requested_by_user_id: number;
+  status: CharacterClaimRequestStatus;
+  target_member_id: number | null;
+  target_user_id: number;
+  updated_at: string;
+}
+
+export interface CreateCharacterClaimRequestInput {
+  characterId: number;
+  organizationId: number;
+  requestedByUserId: number;
+  status?: CharacterClaimRequestStatus;
+  targetMemberId?: number | null;
+  targetUserId: number;
+}
+
+export interface UpdateCharacterClaimRequestInput {
+  status?: CharacterClaimRequestStatus;
+  targetMemberId?: number | null;
+  targetUserId?: number;
 }
 
 export interface OrganizationMemberPendingActionRecord {
@@ -508,6 +540,8 @@ export interface SettlementRecord {
   net_amount: number;
   notes: string | null;
   organization_id: number;
+  participant_exception_confirmed: number;
+  participant_exception_reason: string | null;
   payer_ref: string | null;
   payer_type: SettlementPayerType;
   settlement_key: string;
@@ -531,6 +565,8 @@ export interface CreateSettlementInput {
   netAmount: number;
   notes?: string | null;
   organizationId: number;
+  participantExceptionConfirmed?: boolean;
+  participantExceptionReason?: string | null;
   payerRef?: string | null;
   payerType?: SettlementPayerType;
   settlementKey: string;
@@ -551,6 +587,8 @@ export interface UpdateSettlementInput {
   grossAmount?: number;
   netAmount?: number;
   notes?: string | null;
+  participantExceptionConfirmed?: boolean;
+  participantExceptionReason?: string | null;
   payerRef?: string | null;
   payerType?: SettlementPayerType;
   settlementKey?: string;

@@ -4,7 +4,7 @@ import type {
   SettlementRecord,
   UpdateSettlementInput,
 } from "./types";
-import { nowIso } from "./utils";
+import { nowIso, toSqliteBoolean } from "./utils";
 
 export class SettlementsRepository {
   constructor(private readonly db: DatabaseClient) {}
@@ -28,13 +28,15 @@ export class SettlementsRepository {
         unit_asset_id,
         payer_type,
         payer_ref,
+        participant_exception_confirmed,
+        participant_exception_reason,
         allocation_mode,
         status,
         notes,
         created_by_user_id,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *`,
       input.organizationId,
       input.eventId ?? null,
@@ -51,6 +53,8 @@ export class SettlementsRepository {
       input.unitAssetId ?? null,
       input.payerType ?? "character",
       input.payerRef ?? null,
+      toSqliteBoolean(input.participantExceptionConfirmed ?? false),
+      input.participantExceptionReason ?? null,
       input.allocationMode ?? "equal",
       input.status ?? "draft",
       input.notes ?? null,
@@ -109,6 +113,8 @@ export class SettlementsRepository {
            unit_asset_id = ?,
            payer_type = ?,
            payer_ref = ?,
+           participant_exception_confirmed = ?,
+           participant_exception_reason = ?,
            allocation_mode = ?,
            status = ?,
            notes = ?,
@@ -129,6 +135,12 @@ export class SettlementsRepository {
       input.unitAssetId === undefined ? existing.unit_asset_id : input.unitAssetId,
       input.payerType ?? existing.payer_type,
       input.payerRef === undefined ? existing.payer_ref : input.payerRef,
+      input.participantExceptionConfirmed === undefined
+        ? existing.participant_exception_confirmed
+        : toSqliteBoolean(input.participantExceptionConfirmed),
+      input.participantExceptionReason === undefined
+        ? existing.participant_exception_reason
+        : input.participantExceptionReason,
       input.allocationMode ?? existing.allocation_mode,
       input.status ?? existing.status,
       input.notes === undefined ? existing.notes : input.notes,

@@ -24,6 +24,7 @@ async function main() {
       "organization_members",
       "characters",
       "games",
+      "character_claim_requests",
       "organization_games",
       "game_aliases",
       "assets",
@@ -64,6 +65,14 @@ async function main() {
       "deleted_at",
       "deleted_by_user_id",
     ]);
+    await assertHasColumns(db, "character_claim_requests", [
+      "organization_id",
+      "character_id",
+      "target_user_id",
+      "target_member_id",
+      "requested_by_user_id",
+      "status",
+    ]);
     await assertHasColumns(db, "assets", [
       "asset_key",
       "normalized_name",
@@ -99,6 +108,8 @@ async function main() {
       "fee_rule_key",
       "allocation_mode",
       "unit_asset_id",
+      "participant_exception_confirmed",
+      "participant_exception_reason",
     ]);
     await assertHasColumns(db, "settlement_allocations", [
       "weight",

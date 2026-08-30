@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { CharacterClaimRequestsRepository } from "../src/repositories/character-claim-requests-repository";
 import { CharactersRepository } from "../src/repositories/characters-repository";
 import { GamesRepository } from "../src/repositories/games-repository";
 import { OrganizationMembersRepository } from "../src/repositories/organization-members-repository";
@@ -407,6 +408,72 @@ test("organization games repository supports CRUD over migrated schema", async (
     await organizationGames.delete(created.id);
     const deleted = await organizationGames.findById(created.id);
     assert.equal(deleted, null);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("character claim requests repository supports create and update", async () => {
+  const { cleanup, db } = await createTestDatabase();
+  try {
+    const users = new UsersRepository(db);
+    const organizations = new OrganizationsRepository(db);
+    const members = new OrganizationMembersRepository(db);
+    const games = new GamesRepository(db);
+    const characters = new CharactersRepository(db);
+    const requests = new CharacterClaimRequestsRepository(db);
+
+    const owner = await users.create({
+      email: "claim-owner@example.com",
+      passwordHash: "hash-claim-owner",
+    });
+    const targetUser = await users.create({
+      email: "claim-target@example.com",
+      passwordHash: "hash-claim-target",
+    });
+    const organization = await organizations.create({
+      createdByUserId: owner.id,
+      name: "Claim Request Guild",
+    });
+    const member = await members.create({
+      organizationId: organization.id,
+      role: "member",
+      status: "active",
+      userId: targetUser.id,
+    });
+    const game = await games.create({
+      name: "Guild Wars 2",
+      slug: "gw2",
+    });
+    const character = await characters.create({
+      gameId: game.id,
+      name: "Commander",
+      organizationId: organization.id,
+      vanity: "c-commander",
+    });
+
+    const created = await requests.create({
+      characterId: character.id,
+      organizationId: organization.id,
+      requestedByUserId: owner.id,
+      targetMemberId: member.id,
+      targetUserId: targetUser.id,
+    });
+
+    assert.equal(created.status, "pending_confirmation");
+    assert.equal(created.target_member_id, member.id);
+
+    const found = await requests.findPendingByCharacterAndUser(
+      character.id,
+      targetUser.id,
+    );
+    assert.ok(found);
+    assert.equal(found.id, created.id);
+
+    const updated = await requests.update(created.id, {
+      status: "accepted",
+    });
+    assert.equal(updated.status, "accepted");
   } finally {
     await cleanup();
   }

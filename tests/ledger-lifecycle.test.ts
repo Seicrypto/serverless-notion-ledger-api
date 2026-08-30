@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { DatabaseClient } from "../src/infrastructure/database/database-client";
 import { AllocationLifecycleService } from "../src/services/ledger/allocation-lifecycle-service";
 import { ClaimLifecycleService } from "../src/services/ledger/claim-lifecycle-service";
 import { EventLifecycleService } from "../src/services/ledger/event-lifecycle-service";
@@ -11,6 +12,7 @@ import { SettlementAllocationsRepository } from "../src/repositories/settlement-
 import { SettlementClaimsRepository } from "../src/repositories/settlement-claims-repository";
 import { AssetsRepository } from "../src/repositories/assets-repository";
 import { CharactersRepository } from "../src/repositories/characters-repository";
+import { EventParticipantsRepository } from "../src/repositories/event-participants-repository";
 import { GamesRepository } from "../src/repositories/games-repository";
 import { OrganizationGamesRepository } from "../src/repositories/organization-games-repository";
 import { OrganizationsRepository } from "../src/repositories/organizations-repository";
@@ -78,6 +80,21 @@ async function createLedgerFixture() {
     organization,
     owner,
   };
+}
+
+async function addEventParticipants(
+  db: DatabaseClient,
+  eventId: number,
+  characterIds: number[],
+) {
+  const participants = new EventParticipantsRepository(db);
+  for (const characterId of characterIds) {
+    await participants.create({
+      characterId,
+      eventId,
+      weight: 1,
+    });
+  }
 }
 
 test("settlement lifecycle requires event readiness before settlement creation", async () => {
@@ -162,6 +179,121 @@ test("event lifecycle can auto-assign keys and transition through route-facing s
   }
 });
 
+test("allocations require matching event participants unless settlement exception was confirmed", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+    const allocationService = new AllocationLifecycleService(fixture.db);
+    const participants = new EventParticipantsRepository(fixture.db);
+
+    const event = await eventService.createEvent({
+      occurredAt: "2026-08-26T09:30:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Participant Guard Event",
+    });
+    await participants.create({
+      characterId: fixture.characterOne.id,
+      eventId: event.id,
+      weight: 1,
+    });
+    await eventService.markReadyForSettlement(event.id);
+
+    const strictSettlement = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-26T10:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 1000,
+      netAmount: 1000,
+      organizationId: fixture.organization.id,
+      title: "Strict Participant Settlement",
+    });
+
+    await assert.rejects(
+      () =>
+        allocationService.createPendingAllocation({
+          amount: 1000,
+          characterId: fixture.characterTwo.id,
+          settlementId: strictSettlement.id,
+        }),
+      (error: unknown) =>
+        error instanceof ConflictError &&
+        error.code === "SETTLEMENT_EVENT_PARTICIPANT_MISMATCH",
+    );
+
+    const exceptionSettlement = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-26T10:30:00.000Z",
+      eventId: event.id,
+      grossAmount: 1000,
+      netAmount: 1000,
+      organizationId: fixture.organization.id,
+      participantExceptionConfirmed: true,
+      participantExceptionReason: "Manual exception approved before allocation.",
+      title: "Exception Participant Settlement",
+    });
+
+    const allocation = await allocationService.createPendingAllocation({
+      amount: 1000,
+      characterId: fixture.characterTwo.id,
+      settlementId: exceptionSettlement.id,
+    });
+
+    assert.equal(allocation.character_id, fixture.characterTwo.id);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("disbursement requires event participants when no settlement exception was confirmed", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+    const disbursementService = new SettlementDisbursementService(fixture.db);
+    const participants = new EventParticipantsRepository(fixture.db);
+
+    const event = await eventService.createEvent({
+      occurredAt: "2026-08-26T11:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Disbursement Guard Event",
+    });
+    await participants.create({
+      characterId: fixture.characterOne.id,
+      eventId: event.id,
+      weight: 1,
+    });
+    await eventService.markReadyForSettlement(event.id);
+
+    const settlement = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-26T11:30:00.000Z",
+      eventId: event.id,
+      grossAmount: 2000,
+      netAmount: 2000,
+      organizationId: fixture.organization.id,
+      title: "Disbursement Guard Settlement",
+    });
+
+    await assert.rejects(
+      () =>
+        disbursementService.disburseSettlement({
+          claimedAt: "2026-08-26T12:00:00.000Z",
+          items: [
+            {
+              amount: 2000,
+              characterId: fixture.characterTwo.id,
+            },
+          ],
+          organizationId: fixture.organization.id,
+          settlementId: settlement.id,
+        }),
+      (error: unknown) =>
+        error instanceof ConflictError &&
+        error.code === "SETTLEMENT_EVENT_PARTICIPANT_MISMATCH",
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("claim confirmations drive allocation, settlement, and event completion", async () => {
   const fixture = await createLedgerFixture();
   try {
@@ -176,6 +308,10 @@ test("claim confirmations drive allocation, settlement, and event completion", a
       organizationId: fixture.organization.id,
       title: "Flow Event",
     });
+    await addEventParticipants(fixture.db, event.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
     await eventService.markReadyForSettlement(event.id);
 
     const settlement = await settlementService.createDraftSettlement({
@@ -262,6 +398,10 @@ test("settlement disbursement can create allocations and recorded claims from dr
       organizationId: fixture.organization.id,
       title: "Disburse Create Event",
     });
+    await addEventParticipants(fixture.db, event.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
     await eventService.markReadyForSettlement(event.id);
 
     const settlement = await settlementService.createDraftSettlement({
@@ -320,6 +460,10 @@ test("settlement disbursement can match existing allocations and reject amount m
       organizationId: fixture.organization.id,
       title: "Disburse Match Event",
     });
+    await addEventParticipants(fixture.db, event.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
     await eventService.markReadyForSettlement(event.id);
 
     const settlement = await settlementService.createDraftSettlement({
@@ -406,6 +550,7 @@ test("dashboard summary counts unsettled events and disbursement states", async 
       organizationId: fixture.organization.id,
       title: "Ready Dashboard Event",
     });
+    await addEventParticipants(fixture.db, readyEvent.id, [fixture.characterTwo.id]);
     await eventService.markReadyForSettlement(readyEvent.id);
 
     const settlementOne = await settlementService.createDraftSettlement({
@@ -476,6 +621,7 @@ test("dashboard character summary and detail expose receivable and payable views
       organizationId: fixture.organization.id,
       title: "Dashboard Character Event",
     });
+    await addEventParticipants(fixture.db, event.id, [fixture.characterTwo.id]);
     await eventService.markReadyForSettlement(event.id);
 
     const settlement = await settlementService.createDraftSettlement({
@@ -575,6 +721,10 @@ test("settlement cancellation is blocked once payout has started", async () => {
       organizationId: fixture.organization.id,
       title: "Cancel Event",
     });
+    await addEventParticipants(fixture.db, event.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
     await eventService.markReadyForSettlement(event.id);
 
     const settlement = await settlementService.createDraftSettlement({
@@ -629,6 +779,7 @@ test("allocation lifecycle transition blocks direct claimed status and supports 
       organizationId: fixture.organization.id,
       title: "Allocation Transition Event",
     });
+    await addEventParticipants(fixture.db, event.id, [fixture.characterOne.id]);
     await eventService.markReadyForSettlement(event.id);
 
     const settlement = await settlementService.createDraftSettlement({
@@ -672,6 +823,7 @@ test("claim lifecycle transition supports confirm and void workflows", async () 
       organizationId: fixture.organization.id,
       title: "Claim Transition Event",
     });
+    await addEventParticipants(fixture.db, event.id, [fixture.characterOne.id]);
     await eventService.markReadyForSettlement(event.id);
 
     const settlement = await settlementService.createDraftSettlement({

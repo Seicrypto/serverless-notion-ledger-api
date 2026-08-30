@@ -1,16 +1,23 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { D1Client } from "../../infrastructure/d1/d1-client";
+import { AssetDuplicateDetectionService } from "../../services/assets/asset-duplicate-detection-service";
 import { OrganizationGamesRepository } from "../../repositories/organization-games-repository";
 import type { AssetAliasRecord, AssetRecord } from "../../repositories/types";
 import {
   AppError,
   buildErrorResponseBody,
   ensureRequestId,
+  NotFoundError,
 } from "../../lib/errors";
-import { requireTargetOrganizationMember } from "../organizations/middleware";
+import {
+  requireTargetOrganizationManager,
+  requireTargetOrganizationMember,
+} from "../organizations/middleware";
 import type { AppBindings } from "../../types/hono";
 import { AssetLifecycleService } from "../../services/assets/asset-lifecycle-service";
-import { createOrganizationAssetRoute } from "./schema";
+import { AssetsRepository } from "../../repositories/assets-repository";
+import { GamesRepository } from "../../repositories/games-repository";
+import { createOrganizationAssetRoute, getOrganizationAssetRoute, listOrganizationAssetsRoute, resolveOrganizationAssetsRoute, searchOrganizationAssetsRoute, updateOrganizationAssetRoute } from "./schema";
 
 export const organizationAssetsRouter = new OpenAPIHono<AppBindings>();
 
@@ -29,7 +36,71 @@ function validationErrorFromIssues(
   };
 }
 
+async function listOrganizationAssets(
+  db: D1Client,
+  organizationId: number,
+  query: {
+    assetType?: "item" | "currency" | "ticket" | "reward" | "service" | "other";
+    gameId?: number;
+    limit?: number;
+    offset?: number;
+    q?: string;
+    status?: "candidate" | "org_verified" | "active" | "merged" | "deprecated";
+  },
+) {
+  const limit = query.limit ?? 20;
+  const offset = query.offset ?? 0;
+  const bindings: unknown[] = [organizationId];
+  const whereClauses = [`organization_id = ?`];
+
+  if (query.gameId !== undefined) {
+    whereClauses.push(`game_id = ?`);
+    bindings.push(query.gameId);
+  }
+
+  if (query.assetType) {
+    whereClauses.push(`asset_type = ?`);
+    bindings.push(query.assetType);
+  }
+
+  if (query.status) {
+    whereClauses.push(`status = ?`);
+    bindings.push(query.status);
+  }
+
+  if (query.q) {
+    whereClauses.push(`(name LIKE ? OR asset_key LIKE ? OR normalized_name LIKE ?)`);
+    const pattern = `%${query.q}%`;
+    bindings.push(pattern, pattern, pattern);
+  }
+
+  bindings.push(limit + 1, offset);
+
+  const rows = await db.all<AssetRecord>(
+    `SELECT *
+     FROM assets
+     WHERE ${whereClauses.join(" AND ")}
+     ORDER BY id DESC
+     LIMIT ?
+     OFFSET ?`,
+    ...bindings,
+  );
+  const hasMore = rows.length > limit;
+
+  return {
+    assets: (hasMore ? rows.slice(0, limit) : rows).map(toAssetResponse),
+    pagination: { hasMore, limit, offset },
+  };
+}
+
 organizationAssetsRouter.use("/{organization}/assets", requireTargetOrganizationMember);
+organizationAssetsRouter.use("/{organization}/assets/{assetId}", requireTargetOrganizationMember);
+organizationAssetsRouter.use("/{organization}/assets/{assetId}", async (c, next) => {
+  if (c.req.method === "PATCH") {
+    return requireTargetOrganizationManager(c, next);
+  }
+  await next();
+});
 
 organizationAssetsRouter.openapi(createOrganizationAssetRoute, async (c) => {
   const schema =
@@ -45,7 +116,7 @@ organizationAssetsRouter.openapi(createOrganizationAssetRoute, async (c) => {
   }
 
   try {
-    const organization = c.get("organization");
+    const organization = c.get("organization")!;
     const session = c.get("session");
     const db = new D1Client(c.env.APP_DB);
     const service = new AssetLifecycleService(db);
@@ -101,6 +172,179 @@ organizationAssetsRouter.openapi(createOrganizationAssetRoute, async (c) => {
       );
     }
 
+    throw error;
+  }
+});
+
+organizationAssetsRouter.openapi(listOrganizationAssetsRoute, async (c) => {
+  const parsed = listOrganizationAssetsRoute.request.query.safeParse(c.req.query());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = c.get("organization")!;
+    const db = new D1Client(c.env.APP_DB);
+    return c.json(await listOrganizationAssets(db, organization.id, parsed.data), 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+organizationAssetsRouter.openapi(searchOrganizationAssetsRoute, async (c) => {
+  const parsed = searchOrganizationAssetsRoute.request.query.safeParse(c.req.query());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = c.get("organization")!;
+    const db = new D1Client(c.env.APP_DB);
+    return c.json(await listOrganizationAssets(db, organization.id, parsed.data), 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+organizationAssetsRouter.openapi(getOrganizationAssetRoute, async (c) => {
+  const parsed = getOrganizationAssetRoute.request.params.safeParse(c.req.param());
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = c.get("organization")!;
+    const asset = await new AssetsRepository(new D1Client(c.env.APP_DB)).findById(
+      parsed.data.assetId,
+    );
+
+    if (!asset || asset.organization_id !== organization.id) {
+      throw new NotFoundError("Asset not found");
+    }
+
+    return c.json({ asset: toAssetResponse(asset) }, 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+organizationAssetsRouter.openapi(updateOrganizationAssetRoute, async (c) => {
+  const params = updateOrganizationAssetRoute.request.params.safeParse(c.req.param());
+  const schema =
+    updateOrganizationAssetRoute.request.body.content["application/json"].schema;
+  const body = schema.safeParse(await c.req.json());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  if (!body.success) {
+    return c.json(
+      validationErrorFromIssues(body.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = c.get("organization")!;
+    const db = new D1Client(c.env.APP_DB);
+    const assets = new AssetsRepository(db);
+    const asset = await assets.findById(params.data.assetId);
+
+    if (!asset || asset.organization_id !== organization.id) {
+      throw new NotFoundError("Asset not found");
+    }
+
+    if (body.data.gameId !== undefined) {
+      const game = await new GamesRepository(db).findById(body.data.gameId);
+      if (!game) {
+        throw new NotFoundError("Game not found");
+      }
+    }
+
+    const updated = await assets.update(asset.id, {
+      assetType: body.data.assetType,
+      gameId: body.data.gameId,
+      iconUrl: body.data.iconUrl,
+      metadataJson: body.data.metadataJson,
+      name: body.data.name,
+      normalizedName: body.data.name
+        ? body.data.name.trim().normalize("NFKC").toLowerCase()
+        : undefined,
+      rarityLabel: body.data.rarityLabel,
+      status: body.data.status,
+    });
+
+    return c.json(
+      {
+        asset: toAssetResponse(updated),
+        message: "Asset updated successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+organizationAssetsRouter.openapi(resolveOrganizationAssetsRoute, async (c) => {
+  const schema =
+    resolveOrganizationAssetsRoute.request.body.content["application/json"].schema;
+  const body = schema.safeParse(await c.req.json());
+
+  if (!body.success) {
+    return c.json(
+      validationErrorFromIssues(body.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = c.get("organization")!;
+    const duplicate = await new AssetDuplicateDetectionService(
+      new D1Client(c.env.APP_DB),
+    ).detect({
+      gameId: body.data.gameId,
+      name: body.data.name,
+      organizationId: organization.id,
+    });
+
+    return c.json(
+      {
+        duplicate: toDuplicateResponse(duplicate),
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
     throw error;
   }
 });

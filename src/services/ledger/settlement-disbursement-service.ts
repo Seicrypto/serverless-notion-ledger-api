@@ -1,6 +1,7 @@
 import type { DatabaseClient } from "../../infrastructure/database/database-client";
 import { ConflictError, NotFoundError } from "../../lib/errors";
 import { CharactersRepository } from "../../repositories/characters-repository";
+import { EventParticipantsRepository } from "../../repositories/event-participants-repository";
 import { SettlementAllocationsRepository } from "../../repositories/settlement-allocations-repository";
 import { SettlementClaimsRepository } from "../../repositories/settlement-claims-repository";
 import { SettlementsRepository } from "../../repositories/settlements-repository";
@@ -75,6 +76,8 @@ export class SettlementDisbursementService {
     for (const item of input.items) {
       await this.requireCharacter(item.characterId, input.organizationId);
     }
+
+    await this.assertDisbursementParticipantsAllowed(initialSettlement, input.items);
 
     let workingSettlement = initialSettlement;
     if (workingSettlement.status === "draft") {
@@ -300,5 +303,43 @@ export class SettlementDisbursementService {
     }
 
     return character;
+  }
+
+  private async assertDisbursementParticipantsAllowed(
+    settlement: SettlementRecord,
+    items: SettlementDisbursementItemInput[],
+  ) {
+    if (!settlement.event_id || settlement.participant_exception_confirmed === 1) {
+      return;
+    }
+
+    const participants = await new EventParticipantsRepository(this.db).listByEvent(
+      settlement.event_id,
+    );
+    const participantCharacterIds = new Set(
+      participants
+        .map((participant) => participant.character_id)
+        .filter((value): value is number => value !== null),
+    );
+
+    if (participantCharacterIds.size === 0) {
+      throw new ConflictError(
+        "Settlement requires recorded event participants before disbursement",
+        {
+          code: "SETTLEMENT_EVENT_PARTICIPANTS_REQUIRED",
+        },
+      );
+    }
+
+    for (const item of items) {
+      if (!participantCharacterIds.has(item.characterId)) {
+        throw new ConflictError(
+          "Disbursement character must match a recorded event participant",
+          {
+            code: "SETTLEMENT_EVENT_PARTICIPANT_MISMATCH",
+          },
+        );
+      }
+    }
   }
 }

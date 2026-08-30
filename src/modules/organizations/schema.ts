@@ -29,6 +29,7 @@ const organizationGameSchema = z
     metadataSource: z.enum(["inherited", "official"]),
     officialSiteUrl: z.string().nullable(),
     resolvedIconUrl: z.string().nullable(),
+    sortOrder: z.number().int(),
     source: z.enum(["internal", "steam"]),
     sourceId: z.string().nullable(),
     type: z.enum(["game", "activity"]),
@@ -451,6 +452,173 @@ const deleteOrganizationResponseSchema = z
   })
   .openapi("DeleteOrganizationResponse");
 
+const organizationCharacterDetailResponseSchema = z
+  .object({
+    character: organizationCharacterWithGameSchema,
+  })
+  .openapi("OrganizationCharacterDetailResponse");
+
+const updateCharacterRequestSchema = z
+  .object({
+    description: z.string().trim().max(1000).nullable().optional(),
+    gameId: z.number().int().positive().nullable().optional(),
+    isActive: z.boolean().optional(),
+    name: z.string().trim().min(1).max(100).optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+    slug: z
+      .string()
+      .trim()
+      .min(2)
+      .max(80)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .nullable()
+      .optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  })
+  .openapi("UpdateOrganizationCharacterRequest");
+
+const updateCharacterResponseSchema = z
+  .object({
+    character: organizationCharacterWithGameSchema,
+    message: z.string(),
+  })
+  .openapi("UpdateOrganizationCharacterResponse");
+
+const deleteCharacterResponseSchema = z
+  .object({
+    character: characterSchema,
+    message: z.string(),
+  })
+  .openapi("DeleteOrganizationCharacterResponse");
+
+const characterSearchQuerySchema = z
+  .object({
+    isActive: z.enum(["true", "false"]).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    q: z.string().trim().min(1).max(100),
+  })
+  .openapi("OrganizationCharacterSearchQuery");
+
+const characterSearchResponseSchema = z
+  .object({
+    characters: z.array(organizationCharacterWithGameSchema),
+    pagination: paginationSchema,
+  })
+  .openapi("OrganizationCharacterSearchResponse");
+
+const organizationCharacterParamSchema = z
+  .object({
+    characterId: z.coerce.number().int().positive(),
+    organization: z.string().trim().min(1).max(120),
+  })
+  .openapi("OrganizationCharacterParam");
+
+const organizationGameParamSchema = z
+  .object({
+    gameId: z.coerce.number().int().positive(),
+    organization: z.string().trim().min(1).max(120),
+  })
+  .openapi("OrganizationGameParam");
+
+const claimRequestSchema = z
+  .object({
+    memberId: z.number().int().positive().optional(),
+    mode: z.enum(["assign", "transfer", "unassign"]).optional(),
+    status: z.enum(["claimed", "pending_confirmation"]).optional(),
+    userId: z.number().int().positive().optional(),
+  })
+  .refine(
+    (value) =>
+      value.mode === "unassign" ||
+      value.userId !== undefined ||
+      value.memberId !== undefined,
+    {
+      message: "Provide either userId or memberId",
+      path: ["userId"],
+    },
+  )
+  .openapi("OrganizationCharacterClaimRequest");
+
+const characterClaimRequestSchema = z
+  .object({
+    characterId: z.number().int().positive(),
+    createdAt: z.string(),
+    id: z.number().int().positive(),
+    organizationId: z.number().int().positive(),
+    requestedByUserId: z.number().int().positive(),
+    status: z.enum([
+      "pending_confirmation",
+      "accepted",
+      "declined",
+      "cancelled",
+    ]),
+    targetMemberId: z.number().int().positive().nullable(),
+    targetUserId: z.number().int().positive(),
+    updatedAt: z.string(),
+  })
+  .openapi("CharacterClaimRequest");
+
+const characterClaimResponseSchema = z
+  .object({
+    character: organizationCharacterWithGameSchema,
+    claimRequest: characterClaimRequestSchema.nullable(),
+    message: z.string(),
+  })
+  .openapi("OrganizationCharacterClaimResponse");
+
+const createCharacterClaimRequestSchema = z
+  .object({
+    memberId: z.number().int().positive().optional(),
+    userId: z.number().int().positive().optional(),
+  })
+  .refine((value) => value.userId !== undefined || value.memberId !== undefined, {
+    message: "Provide either userId or memberId",
+    path: ["userId"],
+  })
+  .openapi("CreateCharacterClaimRequest");
+
+const createCharacterClaimRequestResponseSchema = z
+  .object({
+    character: organizationCharacterWithGameSchema,
+    claimRequest: characterClaimRequestSchema,
+    message: z.string(),
+  })
+  .openapi("CreateCharacterClaimRequestResponse");
+
+const createOrganizationGameRequestSchema = z
+  .object({
+    displayName: z.string().trim().max(100).nullable().optional(),
+    gameId: z.number().int().positive(),
+    isPrimary: z.boolean().optional(),
+    sortOrder: z.number().int().optional(),
+  })
+  .openapi("CreateOrganizationGameRequest");
+
+const updateOrganizationGameRequestSchema = z
+  .object({
+    displayName: z.string().trim().max(100).nullable().optional(),
+    isPrimary: z.boolean().optional(),
+    sortOrder: z.number().int().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  })
+  .openapi("UpdateOrganizationGameRequest");
+
+const setPrimaryOrganizationGameRequestSchema = z
+  .object({})
+  .openapi("SetPrimaryOrganizationGameRequest");
+
+const organizationGameResponseSchema = z
+  .object({
+    game: organizationGameSchema,
+    message: z.string(),
+  })
+  .openapi("OrganizationGameResponse");
+
 export const createOrganizationRoute = createRoute({
   method: "post",
   path: "/",
@@ -616,6 +784,284 @@ export const organizationCharactersRoute = createRoute({
     404: {
       content: { "application/json": { schema: errorSchema } },
       description: "Organization not found.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const searchOrganizationCharactersRoute = createRoute({
+  method: "get",
+  path: "/{organization}/characters/search",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierParamSchema,
+    query: characterSearchQuerySchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: characterSearchResponseSchema,
+        },
+      },
+      description: "Search organization characters.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization not found.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const organizationCharacterDetailRoute = createRoute({
+  method: "get",
+  path: "/{organization}/characters/{characterId}",
+  tags: ["Organizations"],
+  request: {
+    params: organizationCharacterParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationCharacterDetailResponseSchema,
+        },
+      },
+      description: "Get an organization character.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or character not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Character cannot be deleted in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const updateOrganizationCharacterRoute = createRoute({
+  method: "patch",
+  path: "/{organization}/characters/{characterId}",
+  tags: ["Organizations"],
+  request: {
+    params: organizationCharacterParamSchema,
+    body: {
+      content: {
+        "application/json": {
+          schema: updateCharacterRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: updateCharacterResponseSchema,
+        },
+      },
+      description: "Character updated successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or character not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Character update conflicts with current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const deleteOrganizationCharacterRoute = createRoute({
+  method: "delete",
+  path: "/{organization}/characters/{characterId}",
+  tags: ["Organizations"],
+  request: {
+    params: organizationCharacterParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: deleteCharacterResponseSchema,
+        },
+      },
+      description: "Character deleted successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or character not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Character cannot be deleted in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const claimOrganizationCharacterRoute = createRoute({
+  method: "patch",
+  path: "/{organization}/characters/{characterId}/claim",
+  tags: ["Organizations"],
+  request: {
+    params: organizationCharacterParamSchema,
+    body: {
+      content: {
+        "application/json": {
+          schema: claimRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: characterClaimResponseSchema,
+        },
+      },
+      description: "Character claim updated successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization, character, member, or user not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Character claim conflicts with current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const createOrganizationCharacterClaimRequestRoute = createRoute({
+  method: "post",
+  path: "/{organization}/characters/{characterId}/claim-request",
+  tags: ["Organizations"],
+  request: {
+    params: organizationCharacterParamSchema,
+    body: {
+      content: {
+        "application/json": {
+          schema: createCharacterClaimRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      content: {
+        "application/json": {
+          schema: createCharacterClaimRequestResponseSchema,
+        },
+      },
+      description: "Character claim request created successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization, character, member, or user not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Character claim request conflicts with current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const unclaimOrganizationCharacterRoute = createRoute({
+  method: "post",
+  path: "/{organization}/characters/{characterId}/unclaim",
+  tags: ["Organizations"],
+  request: {
+    params: organizationCharacterParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: characterClaimResponseSchema,
+        },
+      },
+      description: "Character unclaimed successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or character not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Character cannot be unclaimed in its current state.",
     },
     422: {
       content: { "application/json": { schema: validationErrorSchema } },
@@ -908,6 +1354,186 @@ export const createOrganizationCharacterRoute = createRoute({
     409: {
       content: { "application/json": { schema: errorSchema } },
       description: "Character name or slug already exists.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const createOrganizationGameRoute = createRoute({
+  method: "post",
+  path: "/{organization}/games",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierParamSchema,
+    body: {
+      content: {
+        "application/json": {
+          schema: createOrganizationGameRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      content: {
+        "application/json": {
+          schema: organizationGameResponseSchema,
+        },
+      },
+      description: "Organization game created successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or game not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization game conflicts with current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const updateOrganizationGameRoute = createRoute({
+  method: "patch",
+  path: "/{organization}/games/{gameId}",
+  tags: ["Organizations"],
+  request: {
+    params: organizationGameParamSchema,
+    body: {
+      content: {
+        "application/json": {
+          schema: updateOrganizationGameRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationGameResponseSchema,
+        },
+      },
+      description: "Organization game updated successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or game not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization game conflicts with current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const deleteOrganizationGameRoute = createRoute({
+  method: "delete",
+  path: "/{organization}/games/{gameId}",
+  tags: ["Organizations"],
+  request: {
+    params: organizationGameParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationGameResponseSchema,
+        },
+      },
+      description: "Organization game deleted successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or game not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization game cannot be removed in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const setPrimaryOrganizationGameRoute = createRoute({
+  method: "patch",
+  path: "/{organization}/games/{gameId}/primary",
+  tags: ["Organizations"],
+  request: {
+    params: organizationGameParamSchema,
+    body: {
+      content: {
+        "application/json": {
+          schema: setPrimaryOrganizationGameRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationGameResponseSchema,
+        },
+      },
+      description: "Organization primary game updated successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or game not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization game conflicts with current state.",
     },
     422: {
       content: { "application/json": { schema: validationErrorSchema } },
