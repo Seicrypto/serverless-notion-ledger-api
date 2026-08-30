@@ -2945,6 +2945,10 @@
               "other"
             ]
           },
+          "gameId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
           "iconUrl": {
             "type": [
               "string",
@@ -2972,6 +2976,7 @@
           }
         },
         "required": [
+          "gameId",
           "name"
         ]
       },

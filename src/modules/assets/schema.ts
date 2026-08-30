@@ -41,6 +41,7 @@ const createAssetRequestSchema = z
     assetType: z
       .enum(["item", "currency", "ticket", "reward", "service", "other"])
       .optional(),
+    gameId: z.number().int().positive(),
     iconUrl: z.string().trim().url().nullable().optional(),
     metadataJson: z.string().trim().nullable().optional(),
     name: z.string().trim().min(1).max(120),

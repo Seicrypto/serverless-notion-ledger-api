@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Hono } from "hono";
+import { createOrganizationAssetRoute } from "../src/modules/assets/schema";
 import { AssetAliasesRepository } from "../src/repositories/asset-aliases-repository";
 import { AssetsRepository } from "../src/repositories/assets-repository";
 import { GamesRepository } from "../src/repositories/games-repository";
@@ -42,6 +43,17 @@ test("organization asset middleware pattern covers nested resolve routes", async
 
   assert.equal(response.status, 200);
   assert.equal(middlewareHits, 1);
+});
+
+test("create organization asset request requires gameId", async () => {
+  const schema =
+    createOrganizationAssetRoute.request.body.content["application/json"].schema;
+
+  const parsed = schema.safeParse({
+    name: "Boss Heart",
+  });
+
+  assert.equal(parsed.success, false);
 });
 
 test("mounted organization asset router applies middleware before resolve handler", async () => {

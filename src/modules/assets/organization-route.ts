@@ -120,22 +120,21 @@ organizationAssetsRouter.openapi(createOrganizationAssetRoute, async (c) => {
     const session = c.get("session");
     const db = new D1Client(c.env.APP_DB);
     const service = new AssetLifecycleService(db);
-    const gameId = organization
-      ? (await new OrganizationGamesRepository(db).listByOrganization(organization.id)).find(
-          (game) => game.is_primary === 1,
-        )?.game_id
-      : null;
+    const organizationGame = await new OrganizationGamesRepository(db).findByOrganizationAndGame(
+      organization.id,
+      parsed.data.gameId,
+    );
 
-    if (!organization || !gameId) {
-      throw new AppError("Organization primary game is required to create assets", 409, {
-        code: "ORGANIZATION_PRIMARY_GAME_REQUIRED",
+    if (!organizationGame) {
+      throw new AppError("Organization must be linked to the selected game", 409, {
+        code: "ORGANIZATION_GAME_NOT_LINKED",
       });
     }
 
     const result = await service.createAsset({
       assetType: parsed.data.assetType,
       createdByUserId: session?.user.id ?? null,
-      gameId,
+      gameId: parsed.data.gameId,
       iconUrl: parsed.data.iconUrl,
       metadataJson: parsed.data.metadataJson,
       name: parsed.data.name,
