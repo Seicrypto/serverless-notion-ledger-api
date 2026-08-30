@@ -425,6 +425,41 @@ async function setOrganizationPrimaryGame(
   );
 }
 
+export async function ensureOrganizationInitialGame(
+  db: D1Client,
+  input: {
+    gameId: number;
+    organizationId: number;
+  },
+) {
+  const organizationGames = new OrganizationGamesRepository(db);
+  const existing = await organizationGames.findByOrganizationAndGame(
+    input.organizationId,
+    input.gameId,
+  );
+
+  if (existing) {
+    if (existing.is_primary !== 1) {
+      await setOrganizationPrimaryGame(db, input.organizationId, input.gameId);
+    }
+    return existing;
+  }
+
+  const existingGames = await organizationGames.listByOrganization(input.organizationId);
+  const created = await organizationGames.create({
+    gameId: input.gameId,
+    isPrimary: existingGames.length === 0,
+    organizationId: input.organizationId,
+    sortOrder: existingGames.length,
+  });
+
+  if (created.is_primary === 1) {
+    await setOrganizationPrimaryGame(db, input.organizationId, created.game_id);
+  }
+
+  return created;
+}
+
 async function requireOrganizationCharacter(
   characters: CharactersRepository,
   organizationId: number,
@@ -2494,6 +2529,11 @@ organizationsRouter.openapi(createOrganizationRoute, async (c) => {
         characters,
         parsed.data.initialCharacter.name,
       ),
+    });
+
+    await ensureOrganizationInitialGame(db, {
+      gameId: parsed.data.initialCharacter.gameId,
+      organizationId: organization.id,
     });
 
     return c.json(

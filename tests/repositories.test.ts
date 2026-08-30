@@ -8,6 +8,7 @@ import { OrganizationGamesRepository } from "../src/repositories/organization-ga
 import { OrganizationsRepository } from "../src/repositories/organizations-repository";
 import { UserProfilesRepository } from "../src/repositories/user-profiles-repository";
 import { UsersRepository } from "../src/repositories/users-repository";
+import { ensureOrganizationInitialGame } from "../src/modules/organizations/route";
 import { createTestDatabase } from "./support/test-database";
 
 test("users repository supports CRUD over migrated schema", async () => {
@@ -408,6 +409,43 @@ test("organization games repository supports CRUD over migrated schema", async (
     await organizationGames.delete(created.id);
     const deleted = await organizationGames.findById(created.id);
     assert.equal(deleted, null);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("organization onboarding can create the initial organization game as primary", async () => {
+  const { cleanup, db } = await createTestDatabase();
+  try {
+    const users = new UsersRepository(db);
+    const organizations = new OrganizationsRepository(db);
+    const games = new GamesRepository(db);
+    const organizationGames = new OrganizationGamesRepository(db);
+
+    const owner = await users.create({
+      email: "organization-initial-game-owner@example.com",
+      passwordHash: "hash-initial-game-owner",
+    });
+
+    const organization = await organizations.create({
+      createdByUserId: owner.id,
+      name: "Bootstrap Guild",
+    });
+
+    const game = await games.create({
+      name: "Bootstrap Game",
+      slug: "bootstrap-game",
+    });
+
+    await ensureOrganizationInitialGame(db as never, {
+      gameId: game.id,
+      organizationId: organization.id,
+    });
+
+    const linkedGames = await organizationGames.listByOrganization(organization.id);
+    assert.equal(linkedGames.length, 1);
+    assert.equal(linkedGames[0]?.game_id, game.id);
+    assert.equal(linkedGames[0]?.is_primary, 1);
   } finally {
     await cleanup();
   }
