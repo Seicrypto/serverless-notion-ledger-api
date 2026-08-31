@@ -95,6 +95,43 @@ test("mounted organization asset router applies middleware before resolve handle
   assert.equal(body.organizationId, 3);
 });
 
+test("mounted organization ledger router applies middleware before event handler", async () => {
+  const root = new Hono<{
+    Variables: {
+      organization: { id: number };
+      organizationMembership: { role: "member"; status: "active" };
+      session: { user: { id: number } };
+    };
+  }>();
+  const child = new Hono<{
+    Variables: {
+      organization: { id: number };
+      organizationMembership: { role: "member"; status: "active" };
+      session: { user: { id: number } };
+    };
+  }>();
+
+  child.use("/:organization/ledger/events", async (c, next) => {
+    c.set("organization", { id: Number(c.req.param("organization")) });
+    c.set("organizationMembership", { role: "member", status: "active" });
+    c.set("session", { user: { id: 1 } });
+    await next();
+  });
+  child.post("/:organization/ledger/events", (c) => {
+    const organization = c.get("organization");
+    return c.json({ organizationId: organization.id });
+  });
+  root.route("/organizations", child);
+
+  const response = await root.request("/organizations/3/ledger/events", {
+    method: "POST",
+  });
+  const body = (await response.json()) as { organizationId: number };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.organizationId, 3);
+});
+
 test("asset duplicate detection returns exact canonical matches", async () => {
   const { cleanup, db } = await createTestDatabase();
   try {
