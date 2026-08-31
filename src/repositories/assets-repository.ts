@@ -78,6 +78,52 @@ export class AssetsRepository {
     );
   }
 
+  async queryByOrganization(input: {
+    assetType?: "item" | "currency" | "ticket" | "reward" | "service" | "other";
+    gameId?: number;
+    limit: number;
+    offset: number;
+    organizationId: number;
+    q?: string;
+    status?: "candidate" | "org_verified" | "active" | "merged" | "deprecated";
+  }): Promise<AssetRecord[]> {
+    const bindings: unknown[] = [input.organizationId];
+    const whereClauses = [`organization_id = ?`];
+
+    if (input.gameId !== undefined) {
+      whereClauses.push(`game_id = ?`);
+      bindings.push(input.gameId);
+    }
+
+    if (input.assetType) {
+      whereClauses.push(`asset_type = ?`);
+      bindings.push(input.assetType);
+    }
+
+    if (input.status) {
+      whereClauses.push(`status = ?`);
+      bindings.push(input.status);
+    }
+
+    if (input.q) {
+      whereClauses.push(`(name LIKE ? OR asset_key LIKE ? OR normalized_name LIKE ?)`);
+      const pattern = `%${input.q}%`;
+      bindings.push(pattern, pattern, pattern);
+    }
+
+    bindings.push(input.limit + 1, input.offset);
+
+    return this.db.all<AssetRecord>(
+      `SELECT *
+       FROM assets
+       WHERE ${whereClauses.join(" AND ")}
+       ORDER BY id DESC
+       LIMIT ?
+       OFFSET ?`,
+      ...bindings,
+    );
+  }
+
   async update(id: number, input: UpdateAssetInput): Promise<AssetRecord> {
     const existing = await this.findByIdOrThrow(id);
     const updated = await this.db.first<AssetRecord>(

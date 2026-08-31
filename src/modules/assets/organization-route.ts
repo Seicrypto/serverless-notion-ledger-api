@@ -17,6 +17,7 @@ import type { AppBindings } from "../../types/hono";
 import { AssetLifecycleService } from "../../services/assets/asset-lifecycle-service";
 import { AssetsRepository } from "../../repositories/assets-repository";
 import { GamesRepository } from "../../repositories/games-repository";
+import { normalizeAssetName } from "../../services/assets/asset-normalization-service";
 import { createOrganizationAssetRoute, getOrganizationAssetRoute, listOrganizationAssetsRoute, resolveOrganizationAssetsRoute, searchOrganizationAssetsRoute, updateOrganizationAssetRoute } from "./schema";
 
 export const organizationAssetsRouter = new OpenAPIHono<AppBindings>();
@@ -50,47 +51,28 @@ async function listOrganizationAssets(
 ) {
   const limit = query.limit ?? 20;
   const offset = query.offset ?? 0;
-  const bindings: unknown[] = [organizationId];
-  const whereClauses = [`organization_id = ?`];
-
-  if (query.gameId !== undefined) {
-    whereClauses.push(`game_id = ?`);
-    bindings.push(query.gameId);
-  }
-
-  if (query.assetType) {
-    whereClauses.push(`asset_type = ?`);
-    bindings.push(query.assetType);
-  }
-
-  if (query.status) {
-    whereClauses.push(`status = ?`);
-    bindings.push(query.status);
-  }
-
-  if (query.q) {
-    whereClauses.push(`(name LIKE ? OR asset_key LIKE ? OR normalized_name LIKE ?)`);
-    const pattern = `%${query.q}%`;
-    bindings.push(pattern, pattern, pattern);
-  }
-
-  bindings.push(limit + 1, offset);
-
-  const rows = await db.all<AssetRecord>(
-    `SELECT *
-     FROM assets
-     WHERE ${whereClauses.join(" AND ")}
-     ORDER BY id DESC
-     LIMIT ?
-     OFFSET ?`,
-    ...bindings,
-  );
+  const rows = await new AssetsRepository(db).queryByOrganization({
+    assetType: query.assetType,
+    gameId: query.gameId,
+    limit,
+    offset,
+    organizationId,
+    q: query.q,
+    status: query.status,
+  });
   const hasMore = rows.length > limit;
 
   return {
     assets: (hasMore ? rows.slice(0, limit) : rows).map(toAssetResponse),
     pagination: { hasMore, limit, offset },
   };
+}
+
+export function normalizeAssetSearchQuery(q?: string): string | undefined {
+  const trimmedQuery = q?.trim();
+  return trimmedQuery && trimmedQuery.length >= 2
+    ? normalizeAssetName(trimmedQuery)
+    : undefined;
 }
 
 organizationAssetsRouter.use("/:organization/assets", requireTargetOrganizationMember);
@@ -210,7 +192,18 @@ organizationAssetsRouter.openapi(searchOrganizationAssetsRoute, async (c) => {
   try {
     const organization = c.get("organization")!;
     const db = new D1Client(c.env.APP_DB);
-    return c.json(await listOrganizationAssets(db, organization.id, parsed.data), 200);
+    const result = await listOrganizationAssets(db, organization.id, {
+      ...parsed.data,
+      q: normalizeAssetSearchQuery(parsed.data.q),
+    });
+
+    return c.json(
+      {
+        assets: result.assets.map(toAssetSearchResponse),
+        pagination: result.pagination,
+      },
+      200,
+    );
   } catch (error) {
     if (error instanceof AppError) {
       return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
@@ -238,7 +231,7 @@ organizationAssetsRouter.openapi(getOrganizationAssetRoute, async (c) => {
       throw new NotFoundError("Asset not found");
     }
 
-    return c.json({ asset: toAssetResponse(asset) }, 200);
+    return c.json({ asset: toAssetDetailResponse(asset) }, 200);
   } catch (error) {
     if (error instanceof AppError) {
       return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
@@ -380,6 +373,32 @@ function toAssetAliasResponse(alias: AssetAliasRecord) {
     locale: alias.locale,
     normalizedAlias: alias.normalized_alias,
     regionCode: alias.region_code,
+  };
+}
+
+function toAssetSearchResponse(asset: ReturnType<typeof toAssetResponse>) {
+  return {
+    assetType: asset.assetType,
+    gameId: asset.gameId,
+    iconUrl: asset.iconUrl,
+    id: asset.id,
+    name: asset.name,
+    status: asset.status,
+  };
+}
+
+function toAssetDetailResponse(asset: AssetRecord) {
+  return {
+    assetType: asset.asset_type,
+    createdAt: asset.created_at,
+    gameId: asset.game_id,
+    iconUrl: asset.icon_url,
+    id: asset.id,
+    metadataJson: asset.metadata_json,
+    name: asset.name,
+    rarityLabel: asset.rarity_label,
+    status: asset.status,
+    updatedAt: asset.updated_at,
   };
 }
 

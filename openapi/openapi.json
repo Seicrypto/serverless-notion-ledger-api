@@ -3016,15 +3016,175 @@
           "pagination"
         ]
       },
+      "OrganizationAssetSearchResponse": {
+        "type": "object",
+        "properties": {
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetSearchItem"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "hasMore": {
+                "type": "boolean"
+              },
+              "limit": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "hasMore",
+              "limit",
+              "offset"
+            ]
+          }
+        },
+        "required": [
+          "assets",
+          "pagination"
+        ]
+      },
+      "AssetSearchItem": {
+        "type": "object",
+        "properties": {
+          "assetType": {
+            "type": "string",
+            "enum": [
+              "item",
+              "currency",
+              "ticket",
+              "reward",
+              "service",
+              "other"
+            ]
+          },
+          "gameId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "org_verified",
+              "active",
+              "merged",
+              "deprecated"
+            ]
+          }
+        },
+        "required": [
+          "assetType",
+          "gameId",
+          "iconUrl",
+          "id",
+          "name",
+          "status"
+        ]
+      },
       "OrganizationAssetDetailResponse": {
         "type": "object",
         "properties": {
           "asset": {
-            "$ref": "#/components/schemas/Asset"
+            "$ref": "#/components/schemas/AssetDetail"
           }
         },
         "required": [
           "asset"
+        ]
+      },
+      "AssetDetail": {
+        "type": "object",
+        "properties": {
+          "assetType": {
+            "type": "string",
+            "enum": [
+              "item",
+              "currency",
+              "ticket",
+              "reward",
+              "service",
+              "other"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "gameId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "iconUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "metadataJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "rarityLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "org_verified",
+              "active",
+              "merged",
+              "deprecated"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetType",
+          "createdAt",
+          "gameId",
+          "iconUrl",
+          "id",
+          "metadataJson",
+          "name",
+          "rarityLabel",
+          "status",
+          "updatedAt"
         ]
       },
       "UpdateOrganizationAssetResponse": {
@@ -10270,7 +10430,6 @@
           {
             "schema": {
               "type": "string",
-              "minLength": 1,
               "maxLength": 120
             },
             "required": false,
@@ -10299,7 +10458,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrganizationAssetListResponse"
+                  "$ref": "#/components/schemas/OrganizationAssetSearchResponse"
                 }
               }
             }
