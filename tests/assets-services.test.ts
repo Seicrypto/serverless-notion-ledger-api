@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Hono } from "hono";
 import { createOrganizationAssetRoute } from "../src/modules/assets/schema";
+import { normalizeAssetSearchQuery } from "../src/modules/assets/organization-route";
 import { AssetAliasesRepository } from "../src/repositories/asset-aliases-repository";
 import { AssetsRepository } from "../src/repositories/assets-repository";
 import { GamesRepository } from "../src/repositories/games-repository";
@@ -54,6 +55,13 @@ test("create organization asset request requires gameId", async () => {
   });
 
   assert.equal(parsed.success, false);
+});
+
+test("asset search query normalization falls back to default suggestions for blank or short input", () => {
+  assert.equal(normalizeAssetSearchQuery(undefined), undefined);
+  assert.equal(normalizeAssetSearchQuery(""), undefined);
+  assert.equal(normalizeAssetSearchQuery("a"), undefined);
+  assert.equal(normalizeAssetSearchQuery("  Heart-Gem  "), "heart gem");
 });
 
 test("mounted organization asset router applies middleware before resolve handler", async () => {
@@ -129,6 +137,87 @@ test("asset duplicate detection returns exact canonical matches", async () => {
     assert.equal(result.exactMatch?.asset.name, "Heart Gem");
     assert.equal(result.exactMatch?.matchedBy, "canonical_exact");
     assert.equal(result.recommendedAction, "use_existing");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("asset repository queryByOrganization supports search and default suggestion listing", async () => {
+  const { cleanup, db } = await createTestDatabase();
+  try {
+    const users = new UsersRepository(db);
+    const organizations = new OrganizationsRepository(db);
+    const games = new GamesRepository(db);
+    const assets = new AssetsRepository(db);
+
+    const owner = await users.create({
+      email: "assets-query-owner@example.com",
+      passwordHash: "hash-assets-query-owner",
+      status: "active",
+    });
+    const otherOwner = await users.create({
+      email: "assets-query-other@example.com",
+      passwordHash: "hash-assets-query-other",
+      status: "active",
+    });
+    const organization = await organizations.create({
+      createdByUserId: owner.id,
+      name: "Query Guild",
+    });
+    const otherOrganization = await organizations.create({
+      createdByUserId: otherOwner.id,
+      name: "Other Query Guild",
+    });
+    const game = await games.create({
+      name: "Query Game",
+      slug: "query-game",
+    });
+
+    const heartGem = await assets.create({
+      assetKey: "query-game-heart-gem",
+      gameId: game.id,
+      name: "Heart Gem",
+      normalizedName: "heart gem",
+      organizationId: organization.id,
+      scope: "organization",
+      status: "active",
+    });
+    const fireOrb = await assets.create({
+      assetKey: "query-game-fire-orb",
+      gameId: game.id,
+      name: "Fire Orb",
+      normalizedName: "fire orb",
+      organizationId: organization.id,
+      scope: "organization",
+      status: "candidate",
+    });
+    await assets.create({
+      assetKey: "other-query-game-heart-gem",
+      gameId: game.id,
+      name: "Heart Gem",
+      normalizedName: "heart gem",
+      organizationId: otherOrganization.id,
+      scope: "organization",
+      status: "active",
+    });
+
+    const suggestions = await assets.queryByOrganization({
+      limit: 10,
+      offset: 0,
+      organizationId: organization.id,
+    });
+    assert.equal(suggestions.length, 2);
+    assert.equal(suggestions[0]?.id, fireOrb.id);
+    assert.equal(suggestions[1]?.id, heartGem.id);
+
+    const searched = await assets.queryByOrganization({
+      limit: 10,
+      offset: 0,
+      organizationId: organization.id,
+      q: "heart gem",
+    });
+    assert.equal(searched.length, 1);
+    assert.equal(searched[0]?.id, heartGem.id);
   } finally {
     await cleanup();
   }

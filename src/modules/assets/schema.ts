@@ -83,9 +83,61 @@ const assetListResponseSchema = z
   })
   .openapi("OrganizationAssetListResponse");
 
+const assetSearchItemSchema = z
+  .object({
+    assetType: z.enum(["item", "currency", "ticket", "reward", "service", "other"]),
+    gameId: z.number().int().positive(),
+    iconUrl: z.string().nullable(),
+    id: z.number().int().positive(),
+    name: z.string(),
+    status: z.enum(["candidate", "org_verified", "active", "merged", "deprecated"]),
+  })
+  .openapi("AssetSearchItem");
+
+const assetSearchQuerySchema = z
+  .object({
+    assetType: z
+      .enum(["item", "currency", "ticket", "reward", "service", "other"])
+      .optional(),
+    gameId: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    q: z.string().trim().max(120).optional(),
+    status: z
+      .enum(["candidate", "org_verified", "active", "merged", "deprecated"])
+      .optional(),
+  })
+  .openapi("OrganizationAssetSearchQuery");
+
+const assetSearchResponseSchema = z
+  .object({
+    assets: z.array(assetSearchItemSchema),
+    pagination: z.object({
+      hasMore: z.boolean(),
+      limit: z.number().int().positive(),
+      offset: z.number().int().nonnegative(),
+    }),
+  })
+  .openapi("OrganizationAssetSearchResponse");
+
+const assetDetailSchema = z
+  .object({
+    assetType: z.enum(["item", "currency", "ticket", "reward", "service", "other"]),
+    createdAt: z.string(),
+    gameId: z.number().int().positive(),
+    iconUrl: z.string().nullable(),
+    id: z.number().int().positive(),
+    metadataJson: z.string().nullable(),
+    name: z.string(),
+    rarityLabel: z.string().nullable(),
+    status: z.enum(["candidate", "org_verified", "active", "merged", "deprecated"]),
+    updatedAt: z.string(),
+  })
+  .openapi("AssetDetail");
+
 const assetDetailResponseSchema = z
   .object({
-    asset: assetSchema,
+    asset: assetDetailSchema,
   })
   .openapi("OrganizationAssetDetailResponse");
 
@@ -301,11 +353,11 @@ export const searchOrganizationAssetsRoute = createRoute({
   tags: ["Assets"],
   request: {
     params: organizationParamSchema,
-    query: assetListQuerySchema,
+    query: assetSearchQuerySchema,
   },
   responses: {
     200: {
-      content: { "application/json": { schema: assetListResponseSchema } },
+      content: { "application/json": { schema: assetSearchResponseSchema } },
       description: "Search organization assets.",
     },
     401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
