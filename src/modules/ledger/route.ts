@@ -297,55 +297,55 @@ async function computeSettlementParticipantValidation(
 }
 
 organizationLedgerRouter.use(
-  "/{organization}/ledger/events",
+  "/:organization/ledger/events",
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/events/{eventId}/status",
+  "/:organization/ledger/events/:eventId/status",
   requireLedgerManager,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/settlements",
+  "/:organization/ledger/settlements",
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/settlements/{settlementId}/status",
+  "/:organization/ledger/settlements/:settlementId/status",
   requireLedgerManager,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/settlements/{settlementId}/disburse",
+  "/:organization/ledger/settlements/:settlementId/disburse",
   requireLedgerManager,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/settlement-defaults",
+  "/:organization/ledger/settlement-defaults",
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/allocations",
+  "/:organization/ledger/allocations",
   requireLedgerManager,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/allocations/{allocationId}/status",
+  "/:organization/ledger/allocations/:allocationId/status",
   requireLedgerManager,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/claimable-recipients",
+  "/:organization/ledger/claimable-recipients",
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/claimable-recipients/{characterId}",
+  "/:organization/ledger/claimable-recipients/:characterId",
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/claims",
+  "/:organization/ledger/claims",
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/claims/batch",
+  "/:organization/ledger/claims/batch",
   requireLedgerManager,
 );
 organizationLedgerRouter.use(
-  "/{organization}/ledger/claims/{claimId}/status",
+  "/:organization/ledger/claims/:claimId/status",
   requireLedgerManager,
 );
 
