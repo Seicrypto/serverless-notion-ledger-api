@@ -5541,6 +5541,129 @@
           "title"
         ]
       },
+      "SettleLedgerEventRequest": {
+        "type": "object",
+        "properties": {
+          "allocationMode": {
+            "type": "string",
+            "enum": [
+              "equal",
+              "weight",
+              "manual"
+            ]
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "feeAmount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "feeMode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "percent",
+              "fixed",
+              "rule"
+            ]
+          },
+          "feePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "feeRuleKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "grossAmount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "netAmount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "confirmParticipantException": {
+            "type": "boolean"
+          },
+          "payerRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "payerType": {
+            "type": "string",
+            "enum": [
+              "character",
+              "org_treasury",
+              "external",
+              "custom"
+            ]
+          },
+          "participantExceptionReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "recipientCharacterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maxItems": 200
+          },
+          "settlementType": {
+            "type": "string",
+            "enum": [
+              "sale",
+              "bonus",
+              "salary",
+              "reward",
+              "subsidy",
+              "adjustment"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "unitAssetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "decidedAt",
+          "grossAmount",
+          "netAmount",
+          "title"
+        ]
+      },
       "UpdateLedgerSettlementStatusRequest": {
         "type": "object",
         "properties": {
@@ -5557,6 +5680,112 @@
         "required": [
           "status"
         ]
+      },
+      "UpdateLedgerSettlementRequest": {
+        "type": "object",
+        "properties": {
+          "allocationMode": {
+            "type": "string",
+            "enum": [
+              "equal",
+              "weight",
+              "manual"
+            ]
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "feeAmount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "feeMode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "percent",
+              "fixed",
+              "rule"
+            ]
+          },
+          "feePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "feeRuleKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "grossAmount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "netAmount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "payerRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "payerType": {
+            "type": "string",
+            "enum": [
+              "character",
+              "org_treasury",
+              "external",
+              "custom"
+            ]
+          },
+          "participantExceptionReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "settlementType": {
+            "type": "string",
+            "enum": [
+              "sale",
+              "bonus",
+              "salary",
+              "reward",
+              "subsidy",
+              "adjustment"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "unitAssetId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          }
+        }
       },
       "LedgerAllocationResponse": {
         "type": "object",
@@ -11987,7 +12216,7 @@
         },
         "responses": {
           "201": {
-            "description": "Create a draft settlement.",
+            "description": "Create a draft settlement from a ready or partially settled event.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12327,6 +12556,114 @@
         }
       }
     },
+    "/organizations/{organization}/ledger/events/{eventId}/settle": {
+      "post": {
+        "tags": [
+          "Ledger",
+          "Events",
+          "Settlements"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "eventId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettleLedgerEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Auto-ready an event when needed and create a draft settlement from it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerSettlementResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Event not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict or participant confirmation required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LedgerSettlementParticipantConflictResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organizations/{organization}/ledger/settlements/{settlementId}/status": {
       "patch": {
         "tags": [
@@ -12396,6 +12733,106 @@
           },
           "404": {
             "description": "Settlement not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/settlements/{settlementId}": {
+      "patch": {
+        "tags": [
+          "Ledger",
+          "Settlements"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "settlementId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLedgerSettlementRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Update an editable draft settlement before allocations begin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerSettlementResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization manager access required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Settlement or related asset not found.",
             "content": {
               "application/json": {
                 "schema": {
