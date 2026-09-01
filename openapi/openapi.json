@@ -3781,7 +3781,7 @@
           "events": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LedgerEvent"
+              "$ref": "#/components/schemas/LedgerEventListItem"
             }
           },
           "pagination": {
@@ -3791,6 +3791,29 @@
         "required": [
           "events",
           "pagination"
+        ]
+      },
+      "LedgerEventListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LedgerEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "participantCharacterIds": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "participantCount": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
         ]
       },
       "LedgerEvent": {
@@ -3956,15 +3979,225 @@
           {
             "type": "object",
             "properties": {
+              "asset": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "assetType": {
+                    "type": "string",
+                    "enum": [
+                      "item",
+                      "currency",
+                      "ticket",
+                      "reward",
+                      "service",
+                      "other"
+                    ]
+                  },
+                  "iconUrl": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "candidate",
+                      "org_verified",
+                      "active",
+                      "merged",
+                      "deprecated"
+                    ]
+                  }
+                },
+                "required": [
+                  "assetType",
+                  "iconUrl",
+                  "id",
+                  "name",
+                  "status"
+                ]
+              },
+              "game": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "internal",
+                      "steam"
+                    ]
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "game",
+                      "activity"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "slug",
+                  "source",
+                  "type"
+                ]
+              },
+              "holder": {
+                "type": "object",
+                "properties": {
+                  "character": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "slug": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "vanity": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "slug",
+                      "vanity"
+                    ]
+                  },
+                  "ref": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "character",
+                      "org_treasury",
+                      "market",
+                      "external",
+                      "custom"
+                    ]
+                  }
+                },
+                "required": [
+                  "character",
+                  "ref",
+                  "type"
+                ]
+              },
+              "participantCharacterIds": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "participantCount": {
+                "type": "integer",
+                "minimum": 0
+              },
               "participants": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/LedgerEventParticipant"
                 }
+              },
+              "recommendedRecipientCharacterIds": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "requiresParticipantConfirmation": {
+                "type": "boolean"
+              },
+              "settlementReadiness": {
+                "type": "object",
+                "properties": {
+                  "canCreateFromReadyEvent": {
+                    "type": "boolean"
+                  },
+                  "canCreateSettlement": {
+                    "type": "boolean"
+                  },
+                  "canSettleEvent": {
+                    "type": "boolean"
+                  },
+                  "eventStatus": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "ready_for_settlement",
+                      "partially_settled",
+                      "settled",
+                      "cancelled"
+                    ]
+                  },
+                  "requiresParticipantConfirmation": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "canCreateFromReadyEvent",
+                  "canCreateSettlement",
+                  "canSettleEvent",
+                  "eventStatus",
+                  "requiresParticipantConfirmation"
+                ]
               }
             },
             "required": [
-              "participants"
+              "asset",
+              "game",
+              "holder",
+              "participantCharacterIds",
+              "participantCount",
+              "participants",
+              "recommendedRecipientCharacterIds",
+              "requiresParticipantConfirmation",
+              "settlementReadiness"
             ]
           }
         ]
@@ -4062,6 +4295,217 @@
           "name",
           "slug",
           "vanity"
+        ]
+      },
+      "LedgerSettlementWorkspaceResponse": {
+        "type": "object",
+        "properties": {
+          "availableCharacters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerWorkspaceCharacter"
+            }
+          },
+          "currentUserRole": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          },
+          "defaultPayerCharacterId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "defaultRecipientCharacterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "defaults": {
+            "type": "object",
+            "properties": {
+              "defaultAllocationMode": {
+                "type": "string",
+                "enum": [
+                  "equal",
+                  "weight",
+                  "manual"
+                ]
+              },
+              "defaultFeeMode": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "percent",
+                  "fixed",
+                  "rule"
+                ]
+              },
+              "defaultSettlementUnit": {
+                "$ref": "#/components/schemas/LedgerSettlementDefaultUnit"
+              },
+              "supportedAllocationModes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "equal",
+                    "weight",
+                    "manual"
+                  ]
+                }
+              },
+              "supportedFeeModes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "percent",
+                    "fixed",
+                    "rule"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "defaultAllocationMode",
+              "defaultFeeMode",
+              "defaultSettlementUnit",
+              "supportedAllocationModes",
+              "supportedFeeModes"
+            ]
+          },
+          "event": {
+            "$ref": "#/components/schemas/LedgerEventDetail"
+          },
+          "participantCharacterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "required": [
+          "availableCharacters",
+          "currentUserRole",
+          "defaultPayerCharacterId",
+          "defaultRecipientCharacterIds",
+          "defaults",
+          "event",
+          "participantCharacterIds"
+        ]
+      },
+      "LedgerWorkspaceCharacter": {
+        "type": "object",
+        "properties": {
+          "gameId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vanity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "gameId",
+          "id",
+          "isActive",
+          "name",
+          "slug",
+          "vanity"
+        ]
+      },
+      "LedgerSettlementDefaultUnit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "assetKey": {
+            "type": "string"
+          },
+          "assetType": {
+            "type": "string",
+            "enum": [
+              "item",
+              "currency",
+              "ticket",
+              "reward",
+              "service",
+              "other"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "organization"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "org_verified",
+              "active",
+              "merged",
+              "deprecated"
+            ]
+          }
+        },
+        "required": [
+          "assetKey",
+          "assetType",
+          "id",
+          "name",
+          "organizationId",
+          "scope",
+          "status"
         ]
       },
       "LedgerClaimableRecipientSummaryListResponse": {
@@ -4890,68 +5334,6 @@
         "required": [
           "defaults",
           "game"
-        ]
-      },
-      "LedgerSettlementDefaultUnit": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "assetKey": {
-            "type": "string"
-          },
-          "assetType": {
-            "type": "string",
-            "enum": [
-              "item",
-              "currency",
-              "ticket",
-              "reward",
-              "service",
-              "other"
-            ]
-          },
-          "id": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "name": {
-            "type": "string"
-          },
-          "organizationId": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "exclusiveMinimum": 0
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "global",
-              "organization"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "candidate",
-              "org_verified",
-              "active",
-              "merged",
-              "deprecated"
-            ]
-          }
-        },
-        "required": [
-          "assetKey",
-          "assetType",
-          "id",
-          "name",
-          "organizationId",
-          "scope",
-          "status"
         ]
       },
       "LedgerBatchClaimsResponse": {
@@ -11254,6 +11636,17 @@
             "schema": {
               "type": "string",
               "enum": [
+                "participants_summary"
+              ]
+            },
+            "required": false,
+            "name": "include",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
                 "occurredAt",
                 "createdAt",
                 "title",
@@ -11615,6 +12008,86 @@
           },
           "409": {
             "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/settlements/workspace": {
+      "get": {
+        "tags": [
+          "Ledger",
+          "Settlements"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "eventId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get workspace bootstrap data for creating a settlement from an event.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerSettlementWorkspaceResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization membership required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Event or related record not found.",
             "content": {
               "application/json": {
                 "schema": {

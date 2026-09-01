@@ -67,6 +67,7 @@ import {
   getLedgerClaimableRecipientRoute,
   getOrganizationLedgerDashboardSummaryRoute,
   getLedgerSettlementDefaultsRoute,
+  getLedgerSettlementWorkspaceRoute,
   listLedgerClaimableRecipientsRoute,
   listLedgerEventsRoute,
   listLedgerSettlementsRoute,
@@ -136,6 +137,11 @@ type SettlementParticipantValidation = {
   recipientCharacterIds: number[];
   requiresConfirmation: boolean;
   unexpectedRecipientCharacterIds: number[];
+};
+
+type EventParticipantSummary = {
+  participantCharacterIds: number[];
+  participantCount: number;
 };
 
 export function assertEventEditable(event: EventRecord) {
@@ -246,10 +252,235 @@ async function listEventParticipants(
   return rows.map(toEventParticipantResponse);
 }
 
-async function buildEventDetailResponse(db: D1Client, event: EventRecord) {
+export async function listEventParticipantSummaryMap(
+  db: D1Client,
+  eventIds: number[],
+): Promise<Map<number, EventParticipantSummary>> {
+  const summaryMap = new Map<number, EventParticipantSummary>();
+
+  if (eventIds.length === 0) {
+    return summaryMap;
+  }
+
+  const rows = await db.all<{ event_id: number; character_id: number | null }>(
+    `SELECT event_id, character_id
+     FROM event_participants
+     WHERE event_id IN (${eventIds.map(() => "?").join(", ")})
+     ORDER BY id ASC`,
+    ...eventIds,
+  );
+
+  for (const eventId of eventIds) {
+    summaryMap.set(eventId, {
+      participantCharacterIds: [],
+      participantCount: 0,
+    });
+  }
+
+  for (const row of rows) {
+    const entry = summaryMap.get(row.event_id);
+    if (!entry || row.character_id === null) {
+      continue;
+    }
+
+    if (!entry.participantCharacterIds.includes(row.character_id)) {
+      entry.participantCharacterIds.push(row.character_id);
+    }
+  }
+
+  for (const entry of summaryMap.values()) {
+    entry.participantCount = entry.participantCharacterIds.length;
+  }
+
+  return summaryMap;
+}
+
+async function resolveEventGame(
+  db: D1Client,
+  event: EventRecord,
+) {
+  if (!event.game_id) {
+    return null;
+  }
+
+  const game = await new GamesRepository(db).findById(event.game_id);
+  if (!game) {
+    return null;
+  }
+
+  return {
+    id: game.id,
+    name: game.name,
+    slug: game.slug,
+    source: game.source,
+    type: game.type,
+  };
+}
+
+async function resolveEventAsset(
+  db: D1Client,
+  event: EventRecord,
+) {
+  if (!event.asset_id) {
+    return null;
+  }
+
+  const asset = await new AssetsRepository(db).findById(event.asset_id);
+  if (!asset) {
+    return null;
+  }
+
+  return {
+    assetType: asset.asset_type,
+    iconUrl: asset.icon_url,
+    id: asset.id,
+    name: asset.name,
+    status: asset.status,
+  };
+}
+
+async function resolveEventHolder(
+  db: D1Client,
+  event: EventRecord,
+) {
+  let character: {
+    id: number;
+    name: string;
+    slug: string | null;
+    vanity: string | null;
+  } | null = null;
+
+  if (event.holder_type === "character" && event.holder_ref) {
+    const characters = new CharactersRepository(db);
+    const candidate = /^\d+$/.test(event.holder_ref)
+      ? await characters.findById(Number(event.holder_ref))
+      : await characters.findByVanity(event.holder_ref);
+
+    if (candidate && candidate.organization_id === event.organization_id) {
+      character = {
+        id: candidate.id,
+        name: candidate.name,
+        slug: candidate.slug,
+        vanity: candidate.vanity,
+      };
+    }
+  }
+
+  return {
+    character,
+    ref: event.holder_ref,
+    type: event.holder_type,
+  };
+}
+
+function buildSettlementReadiness(
+  event: EventRecord,
+  participantValidation: SettlementParticipantValidation,
+) {
+  const canCreateFromReadyEvent =
+    event.status === "ready_for_settlement" || event.status === "partially_settled";
+  const canCreateSettlement =
+    canCreateFromReadyEvent && !participantValidation.requiresConfirmation;
+  const canSettleEvent =
+    (event.status === "open" || canCreateFromReadyEvent) &&
+    !participantValidation.requiresConfirmation;
+
+  return {
+    canCreateFromReadyEvent,
+    canCreateSettlement,
+    canSettleEvent,
+    eventStatus: event.status,
+    requiresParticipantConfirmation: participantValidation.requiresConfirmation,
+  };
+}
+
+export async function buildEventDetailResponse(db: D1Client, event: EventRecord) {
+  const participants = await listEventParticipants(db, event.id, event.organization_id);
+  const participantCharacterIds = [
+    ...new Set(
+      participants
+        .map((participant) => participant.characterId)
+        .filter((value): value is number => value !== null),
+    ),
+  ];
+  const participantValidation = await computeSettlementParticipantValidation(
+    db,
+    event.id,
+    participantCharacterIds,
+  );
+
   return {
     ...toEventResponse(event),
-    participants: await listEventParticipants(db, event.id, event.organization_id),
+    asset: await resolveEventAsset(db, event),
+    game: await resolveEventGame(db, event),
+    holder: await resolveEventHolder(db, event),
+    participantCharacterIds,
+    participantCount: participantCharacterIds.length,
+    participants,
+    recommendedRecipientCharacterIds: participantCharacterIds,
+    requiresParticipantConfirmation: participantValidation.requiresConfirmation,
+    settlementReadiness: buildSettlementReadiness(event, participantValidation),
+  };
+}
+
+export async function buildSettlementWorkspaceResponseData(input: {
+  db: D1Client;
+  event: EventRecord;
+  organizationId: number;
+  role: "owner" | "admin" | "member";
+  userId: number;
+}) {
+  const organizationGames = await new OrganizationGamesRepository(input.db).listByOrganization(
+    input.organizationId,
+  );
+  const organizationGame =
+    input.event.game_id !== null
+      ? organizationGames.find((candidate) => candidate.game_id === input.event.game_id) ?? null
+      : organizationGames.find((candidate) => candidate.is_primary === 1) ??
+        organizationGames[0] ??
+        null;
+  const game = organizationGame
+    ? await new GamesRepository(input.db).findById(organizationGame.game_id)
+    : null;
+  const defaultSettlementUnit =
+    game === null
+      ? null
+      : await new AssetIdentityResolutionService(input.db).resolveDefaultSettlementUnit({
+          gameId: game.id,
+          organizationId: input.organizationId,
+        });
+  const availableCharacters = await new CharactersRepository(input.db).listByOrganization(
+    input.organizationId,
+  );
+  const claimedCharacters = await new CharactersRepository(input.db).listByOrganizationAndUser(
+    input.organizationId,
+    input.userId,
+  );
+  const eventDetail = await buildEventDetailResponse(input.db, input.event);
+
+  return {
+    availableCharacters: availableCharacters.map((character) => ({
+      gameId: character.game_id,
+      id: character.id,
+      isActive: character.is_active === 1,
+      name: character.name,
+      slug: character.slug,
+      vanity: character.vanity,
+    })),
+    currentUserRole: input.role,
+    defaultPayerCharacterId: claimedCharacters[0]?.id ?? null,
+    defaultRecipientCharacterIds: eventDetail.recommendedRecipientCharacterIds,
+    defaults: {
+      defaultAllocationMode: "equal" as const,
+      defaultFeeMode: "none" as const,
+      defaultSettlementUnit: defaultSettlementUnit
+        ? toSettlementDefaultUnit(defaultSettlementUnit)
+        : null,
+      supportedAllocationModes: SUPPORTED_ALLOCATION_MODES,
+      supportedFeeModes: SUPPORTED_FEE_MODES,
+    },
+    event: eventDetail,
+    participantCharacterIds: eventDetail.participantCharacterIds,
   };
 }
 
@@ -673,10 +904,20 @@ organizationLedgerRouter.openapi(listLedgerEventsRoute, async (c) => {
 
     const hasMore = rows.length > limit;
     const events = hasMore ? rows.slice(0, limit) : rows;
+    const participantSummaryMap =
+      parsed.data.include === "participants_summary"
+        ? await listEventParticipantSummaryMap(
+            db,
+            events.map((event) => event.id),
+          )
+        : null;
 
     return c.json(
       {
-        events: events.map(toEventResponse),
+        events: events.map((event) => ({
+          ...toEventResponse(event),
+          ...(participantSummaryMap?.get(event.id) ?? {}),
+        })),
         pagination: {
           hasMore,
           limit,
@@ -713,6 +954,46 @@ organizationLedgerRouter.openapi(getLedgerEventRoute, async (c) => {
         event: await buildEventDetailResponse(db, event),
         message: "Event retrieved successfully.",
       },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(getLedgerSettlementWorkspaceRoute, async (c) => {
+  const queryParsed = getLedgerSettlementWorkspaceRoute.request.query.safeParse(
+    c.req.query(),
+  );
+  if (!queryParsed.success) {
+    return c.json(
+      validationErrorFromIssues(queryParsed.error.issues, ensureRequestId(c), "query"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const membership = requireLedgerMembership(c);
+    const session = requireLedgerSession(c);
+    const db = new D1Client(c.env.APP_DB);
+    const event = await requireLedgerEvent(
+      db,
+      queryParsed.data.eventId,
+      organization.id,
+    );
+    return c.json(
+      await buildSettlementWorkspaceResponseData({
+        db,
+        event,
+        organizationId: organization.id,
+        role: membership.role,
+        userId: session.user.id,
+      }),
       200,
     );
   } catch (error) {
