@@ -353,24 +353,29 @@ async function validateSettlementParticipantsOrRespond(
   },
 ): Promise<
   | {
+      conflict: null;
       participantExceptionConfirmed: boolean;
       participantExceptionReason: string | null;
       participantValidation: SettlementParticipantValidation | null;
-      response: null;
     }
   | {
+      conflict: {
+        body: ReturnType<typeof buildSettlementParticipantConflictResponse> & {
+          requestId: string;
+        };
+        status: 409;
+      };
       participantExceptionConfirmed: false;
       participantExceptionReason: null;
       participantValidation: SettlementParticipantValidation;
-      response: Response;
     }
 > {
   if (!input.eventId) {
     return {
+      conflict: null,
       participantExceptionConfirmed: false,
       participantExceptionReason: null,
       participantValidation: null,
-      response: null,
     };
   }
 
@@ -386,11 +391,8 @@ async function validateSettlementParticipantsOrRespond(
     input.confirmParticipantException !== true
   ) {
     return {
-      participantExceptionConfirmed: false,
-      participantExceptionReason: null,
-      participantValidation,
-      response: c.json(
-        {
+      conflict: {
+        body: {
           ...buildSettlementParticipantConflictResponse(
             c,
             participantValidation.eventParticipantCount === 0
@@ -400,12 +402,16 @@ async function validateSettlementParticipantsOrRespond(
           ),
           requestId: ensureRequestId(c),
         },
-        409,
-      ),
+        status: 409,
+      },
+      participantExceptionConfirmed: false,
+      participantExceptionReason: null,
+      participantValidation,
     };
   }
 
   return {
+    conflict: null,
     participantExceptionConfirmed:
       participantValidation.requiresConfirmation === true &&
       input.confirmParticipantException === true,
@@ -414,7 +420,6 @@ async function validateSettlementParticipantsOrRespond(
         ? input.participantExceptionReason ?? null
         : null,
     participantValidation,
-    response: null,
   };
 }
 
@@ -1320,8 +1325,11 @@ organizationLedgerRouter.openapi(createLedgerSettlementRoute, async (c) => {
       recipientCharacterIds: parsed.data.recipientCharacterIds,
     });
 
-    if (settlementValidation.response) {
-      return settlementValidation.response;
+    if (settlementValidation.conflict) {
+      return c.json(
+        settlementValidation.conflict.body,
+        settlementValidation.conflict.status,
+      );
     }
 
     const settlement = await new SettlementLifecycleService(db).createDraftSettlement({
@@ -1399,8 +1407,11 @@ organizationLedgerRouter.openapi(settleLedgerEventRoute, async (c) => {
       recipientCharacterIds: parsed.data.recipientCharacterIds,
     });
 
-    if (settlementValidation.response) {
-      return settlementValidation.response;
+    if (settlementValidation.conflict) {
+      return c.json(
+        settlementValidation.conflict.body,
+        settlementValidation.conflict.status,
+      );
     }
 
     const settlement = await new SettlementLifecycleService(db).settleEvent({
