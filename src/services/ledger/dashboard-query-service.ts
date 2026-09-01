@@ -190,7 +190,7 @@ export class DashboardQueryService {
           WHERE s.organization_id = ? AND s.status != 'cancelled') AS settlement_count,
          (SELECT COUNT(*) FROM events e
           WHERE e.organization_id = ?
-            AND e.status IN ('open', 'ready_for_settlement', 'partially_settled')) AS unsettled_event_count,
+            AND e.status IN ('open', 'ready_for_settlement')) AS unsettled_event_count,
          (SELECT COUNT(*)
           FROM settlements s
           WHERE s.organization_id = ?

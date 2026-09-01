@@ -46,6 +46,25 @@ export interface SettlementLifecyclePort {
   ): Promise<SettlementRecord>;
 }
 
+export type SettleEventRecipientInput = {
+  amount?: number;
+  characterId: number;
+  ratio?: number | null;
+  weight?: number;
+};
+
+export type SettleEventWithAllocationsInput = CreateManagedSettlementInput & {
+  eventId: number;
+  recipientCharacterIds?: number[];
+  recipients?: SettleEventRecipientInput[];
+};
+
+export type SettleEventWithAllocationsResult = {
+  allocations: SettlementAllocationRecord[];
+  event: EventRecord;
+  settlement: SettlementRecord;
+};
+
 export interface AllocationLifecyclePort {
   createPendingAllocation(
     input: CreateSettlementAllocationInput,

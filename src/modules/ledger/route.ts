@@ -34,6 +34,7 @@ import { ClaimLifecycleService } from "../../services/ledger/claim-lifecycle-ser
 import { ClaimableRecipientsQueryService } from "../../services/ledger/claimable-recipients-query-service";
 import { DashboardQueryService } from "../../services/ledger/dashboard-query-service";
 import { EventLifecycleService } from "../../services/ledger/event-lifecycle-service";
+import { EventSettlementOrchestrationService } from "../../services/ledger/event-settlement-orchestration-service";
 import { SettlementDisbursementService } from "../../services/ledger/settlement-disbursement-service";
 import { SettlementLifecycleService } from "../../services/ledger/settlement-lifecycle-service";
 import { SessionAuthService } from "../../services/auth/session-auth-service";
@@ -382,7 +383,7 @@ function buildSettlementReadiness(
   const canCreateSettlement =
     canCreateFromReadyEvent && !participantValidation.requiresConfirmation;
   const canSettleEvent =
-    (event.status === "open" || canCreateFromReadyEvent) &&
+    (event.status === "open" || event.status === "ready_for_settlement") &&
     !participantValidation.requiresConfirmation;
 
   return {
@@ -652,6 +653,17 @@ async function validateSettlementParticipantsOrRespond(
         : null,
     participantValidation,
   };
+}
+
+function resolveSettlementRecipientCharacterIds(input: {
+  recipientCharacterIds?: number[];
+  recipients?: Array<{ characterId: number }>;
+}) {
+  if (input.recipients && input.recipients.length > 0) {
+    return input.recipients.map((recipient) => recipient.characterId);
+  }
+
+  return input.recipientCharacterIds;
 }
 
 organizationLedgerRouter.use(
@@ -1685,7 +1697,7 @@ organizationLedgerRouter.openapi(settleLedgerEventRoute, async (c) => {
       eventId: paramsParsed.data.eventId,
       organizationId: organization.id,
       participantExceptionReason: parsed.data.participantExceptionReason,
-      recipientCharacterIds: parsed.data.recipientCharacterIds,
+      recipientCharacterIds: resolveSettlementRecipientCharacterIds(parsed.data),
     });
 
     if (settlementValidation.conflict) {
@@ -1695,7 +1707,9 @@ organizationLedgerRouter.openapi(settleLedgerEventRoute, async (c) => {
       );
     }
 
-    const settlement = await new SettlementLifecycleService(db).settleEvent({
+    const result = await new EventSettlementOrchestrationService(
+      db,
+    ).settleEventWithAllocations({
       allocationMode: parsed.data.allocationMode,
       createdByUserId: session.user.id,
       decidedAt: parsed.data.decidedAt,
@@ -1713,6 +1727,8 @@ organizationLedgerRouter.openapi(settleLedgerEventRoute, async (c) => {
       participantExceptionReason: settlementValidation.participantExceptionReason,
       payerRef: parsed.data.payerRef,
       payerType: parsed.data.payerType,
+      recipientCharacterIds: parsed.data.recipientCharacterIds,
+      recipients: parsed.data.recipients,
       settlementType: parsed.data.settlementType,
       title: parsed.data.title,
       unitAssetId: parsed.data.unitAssetId,
@@ -1720,9 +1736,11 @@ organizationLedgerRouter.openapi(settleLedgerEventRoute, async (c) => {
 
     return c.json(
       {
+        allocations: result.allocations.map(toAllocationResponse),
+        event: await buildEventDetailResponse(db, result.event),
         message: "Event settled successfully.",
-        settlement: toSettlementResponse(settlement),
         participantValidation: settlementValidation.participantValidation,
+        settlement: toSettlementResponse(result.settlement),
       },
       201,
     );
@@ -2099,19 +2117,19 @@ function mapSettlementSortColumn(
   }
 }
 
-function mapEventStatusGroup(
+export function mapEventStatusGroup(
   group: "unsettled" | "settleable" | "settled" | "cancelled",
 ): readonly EventStatus[] {
   switch (group) {
     case "settleable":
-      return ["ready_for_settlement", "partially_settled"];
+      return ["open", "ready_for_settlement"];
     case "settled":
-      return ["settled"];
+      return ["partially_settled", "settled"];
     case "cancelled":
       return ["cancelled"];
     case "unsettled":
     default:
-      return ["open", "ready_for_settlement", "partially_settled"];
+      return ["open", "ready_for_settlement"];
   }
 }
 
