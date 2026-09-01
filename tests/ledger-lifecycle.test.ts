@@ -21,7 +21,11 @@ import { createTestDatabase } from "./support/test-database";
 import {
   assertEventEditable,
   assertSettlementEditable,
+  buildEventDetailResponse,
+  buildSettlementWorkspaceResponseData,
+  listEventParticipantSummaryMap,
 } from "../src/modules/ledger/route";
+import { D1Client } from "../src/infrastructure/d1/d1-client";
 
 async function createLedgerFixture() {
   const context = await createTestDatabase();
@@ -209,6 +213,56 @@ test("event lifecycle can auto-assign keys and transition through route-facing s
       (error: unknown) =>
         error instanceof ConflictError && error.code === "EVENT_STATUS_MANAGED",
     );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("event detail and summary expose participant suggestions for settlement workflows", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const event = await eventService.createEvent({
+      assetId: 1,
+      eventKey: "evt-detail-1",
+      gameId: fixture.game.id,
+      holderRef: String(fixture.characterOne.id),
+      holderType: "character",
+      occurredAt: "2026-08-26T09:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Detail Event",
+    });
+    await addEventParticipants(fixture.db, event.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+
+    const detail = await buildEventDetailResponse(
+      fixture.db as unknown as D1Client,
+      event,
+    );
+    assert.deepEqual(detail.participantCharacterIds, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+    assert.equal(detail.participantCount, 2);
+    assert.deepEqual(detail.recommendedRecipientCharacterIds, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+    assert.equal(detail.requiresParticipantConfirmation, false);
+    assert.equal(detail.holder.character?.id, fixture.characterOne.id);
+    assert.equal(detail.game?.id, fixture.game.id);
+    assert.equal(detail.asset?.id, 1);
+
+    const summaryMap = await listEventParticipantSummaryMap(
+      fixture.db as unknown as D1Client,
+      [event.id],
+    );
+    assert.deepEqual(summaryMap.get(event.id), {
+      participantCharacterIds: [fixture.characterOne.id, fixture.characterTwo.id],
+      participantCount: 2,
+    });
   } finally {
     await fixture.cleanup();
   }
@@ -776,6 +830,51 @@ test("settlement lifecycle can auto-assign keys and default unit assets", async 
       "calculated",
     );
     assert.equal(calculated.status, "calculated");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("settlement workspace bootstrap returns event suggestions, defaults, and viewer role", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const event = await eventService.createEvent({
+      eventKey: "evt-workspace-1",
+      gameId: fixture.game.id,
+      holderRef: String(fixture.characterOne.id),
+      holderType: "character",
+      occurredAt: "2026-08-26T12:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Workspace Event",
+    });
+    await addEventParticipants(fixture.db, event.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+
+    const workspace = await buildSettlementWorkspaceResponseData({
+      db: fixture.db as unknown as D1Client,
+      event,
+      organizationId: fixture.organization.id,
+      role: "owner",
+      userId: fixture.owner.id,
+    });
+
+    assert.equal(workspace.currentUserRole, "owner");
+    assert.equal(workspace.defaultPayerCharacterId, fixture.characterOne.id);
+    assert.deepEqual(workspace.defaultRecipientCharacterIds, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+    assert.deepEqual(workspace.participantCharacterIds, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+    assert.equal(workspace.event.game?.id, fixture.game.id);
+    assert.equal(workspace.defaults.defaultFeeMode, "none");
+    assert.equal(workspace.defaults.defaultAllocationMode, "equal");
+    assert.ok(workspace.availableCharacters.length >= 2);
   } finally {
     await fixture.cleanup();
   }

@@ -63,9 +63,63 @@ const eventParticipantSchema = z
 
 const eventDetailSchema = eventSchema
   .extend({
+    asset: z
+      .object({
+        assetType: z.enum(["item", "currency", "ticket", "reward", "service", "other"]),
+        iconUrl: z.string().nullable(),
+        id: z.number().int().positive(),
+        name: z.string(),
+        status: z.enum(["candidate", "org_verified", "active", "merged", "deprecated"]),
+      })
+      .nullable(),
+    game: z
+      .object({
+        id: z.number().int().positive(),
+        name: z.string(),
+        slug: z.string(),
+        source: z.enum(["internal", "steam"]),
+        type: z.enum(["game", "activity"]),
+      })
+      .nullable(),
+    holder: z.object({
+      character: z
+        .object({
+          id: z.number().int().positive(),
+          name: z.string(),
+          slug: z.string().nullable(),
+          vanity: z.string().nullable(),
+        })
+        .nullable(),
+      ref: z.string().nullable(),
+      type: z.enum(["character", "org_treasury", "market", "external", "custom"]),
+    }),
+    participantCharacterIds: z.array(z.number().int().positive()),
+    participantCount: z.number().int().nonnegative(),
     participants: z.array(eventParticipantSchema),
+    recommendedRecipientCharacterIds: z.array(z.number().int().positive()),
+    requiresParticipantConfirmation: z.boolean(),
+    settlementReadiness: z.object({
+      canCreateFromReadyEvent: z.boolean(),
+      canCreateSettlement: z.boolean(),
+      canSettleEvent: z.boolean(),
+      eventStatus: z.enum([
+        "open",
+        "ready_for_settlement",
+        "partially_settled",
+        "settled",
+        "cancelled",
+      ]),
+      requiresParticipantConfirmation: z.boolean(),
+    }),
   })
   .openapi("LedgerEventDetail");
+
+const eventListItemSchema = eventSchema
+  .extend({
+    participantCharacterIds: z.array(z.number().int().positive()).optional(),
+    participantCount: z.number().int().nonnegative().optional(),
+  })
+  .openapi("LedgerEventListItem");
 
 const settlementSchema = z
   .object({
@@ -408,6 +462,7 @@ const eventListQuerySchema = z
       .optional(),
     limit: z.coerce.number().int().min(1).max(100).optional(),
     offset: z.coerce.number().int().min(0).optional(),
+    include: z.enum(["participants_summary"]).optional(),
     sortBy: z.enum(["occurredAt", "createdAt", "title", "updatedAt"]).optional(),
     sortOrder: z.enum(["asc", "desc"]).optional(),
     status: z
@@ -488,9 +543,38 @@ const settlementDefaultsResponseSchema = z
   })
   .openapi("LedgerSettlementDefaultsResponse");
 
+const workspaceCharacterSchema = z
+  .object({
+    gameId: z.number().int().positive().nullable(),
+    id: z.number().int().positive(),
+    isActive: z.boolean(),
+    name: z.string(),
+    slug: z.string().nullable(),
+    vanity: z.string().nullable(),
+  })
+  .openapi("LedgerWorkspaceCharacter");
+
+const settlementWorkspaceQuerySchema = z
+  .object({
+    eventId: z.coerce.number().int().positive(),
+  })
+  .openapi("LedgerSettlementWorkspaceQuery");
+
+const settlementWorkspaceResponseSchema = z
+  .object({
+    availableCharacters: z.array(workspaceCharacterSchema),
+    currentUserRole: z.enum(["owner", "admin", "member"]),
+    defaultPayerCharacterId: z.number().int().positive().nullable(),
+    defaultRecipientCharacterIds: z.array(z.number().int().positive()),
+    defaults: settlementDefaultsResponseSchema.shape.defaults,
+    event: eventDetailSchema,
+    participantCharacterIds: z.array(z.number().int().positive()),
+  })
+  .openapi("LedgerSettlementWorkspaceResponse");
+
 const eventListResponseSchema = z
   .object({
-    events: z.array(eventSchema),
+    events: z.array(eventListItemSchema),
     pagination: paginationSchema,
   })
   .openapi("LedgerEventListResponse");
@@ -1125,6 +1209,28 @@ export const getLedgerSettlementDefaultsRoute = createRoute({
     401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
     404: { content: { "application/json": { schema: errorSchema } }, description: "Game not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const getLedgerSettlementWorkspaceRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/settlements/workspace",
+  tags: ["Ledger", "Settlements"],
+  request: {
+    params: organizationParamSchema,
+    query: settlementWorkspaceQuerySchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": { schema: settlementWorkspaceResponseSchema },
+      },
+      description: "Get workspace bootstrap data for creating a settlement from an event.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Event or related record not found." },
     422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
   },
 });
