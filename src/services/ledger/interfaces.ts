@@ -35,6 +35,7 @@ export interface EventLifecyclePort {
 export interface SettlementLifecyclePort {
   cancelSettlement(settlementId: number): Promise<SettlementRecord>;
   createDraftSettlement(input: CreateManagedSettlementInput): Promise<SettlementRecord>;
+  settleEvent(input: CreateManagedSettlementInput & { eventId: number }): Promise<SettlementRecord>;
   markCalculated(settlementId: number): Promise<SettlementRecord>;
   markPaid(settlementId: number): Promise<SettlementRecord>;
   startPaying(settlementId: number): Promise<SettlementRecord>;

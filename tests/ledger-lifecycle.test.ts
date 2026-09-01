@@ -7,7 +7,7 @@ import { EventLifecycleService } from "../src/services/ledger/event-lifecycle-se
 import { DashboardQueryService } from "../src/services/ledger/dashboard-query-service";
 import { SettlementDisbursementService } from "../src/services/ledger/settlement-disbursement-service";
 import { SettlementLifecycleService } from "../src/services/ledger/settlement-lifecycle-service";
-import { ConflictError } from "../src/lib/errors";
+import { AppError, ConflictError } from "../src/lib/errors";
 import { SettlementAllocationsRepository } from "../src/repositories/settlement-allocations-repository";
 import { SettlementClaimsRepository } from "../src/repositories/settlement-claims-repository";
 import { AssetsRepository } from "../src/repositories/assets-repository";
@@ -18,6 +18,10 @@ import { OrganizationGamesRepository } from "../src/repositories/organization-ga
 import { OrganizationsRepository } from "../src/repositories/organizations-repository";
 import { UsersRepository } from "../src/repositories/users-repository";
 import { createTestDatabase } from "./support/test-database";
+import {
+  assertEventEditable,
+  assertSettlementEditable,
+} from "../src/modules/ledger/route";
 
 async function createLedgerFixture() {
   const context = await createTestDatabase();
@@ -148,6 +152,37 @@ test("settlement lifecycle requires event readiness before settlement creation",
   }
 });
 
+test("settlement lifecycle can auto-ready an open event through settleEvent", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+
+    const event = await eventService.createEvent({
+      occurredAt: "2026-08-26T12:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Auto Ready Settlement Event",
+    });
+
+    const settlement = await settlementService.settleEvent({
+      decidedAt: "2026-08-26T13:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 500,
+      netAmount: 500,
+      organizationId: fixture.organization.id,
+      settlementKey: "st-auto-ready-1",
+      title: "Auto Ready Settlement",
+    });
+
+    assert.equal(settlement.status, "draft");
+
+    const eventAfterSettlement = await eventService.syncStatusFromSettlements(event.id);
+    assert.equal(eventAfterSettlement.status, "partially_settled");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("event lifecycle can auto-assign keys and transition through route-facing statuses", async () => {
   const fixture = await createLedgerFixture();
   try {
@@ -173,6 +208,45 @@ test("event lifecycle can auto-assign keys and transition through route-facing s
       () => eventService.transitionStatus(event.id, "settled"),
       (error: unknown) =>
         error instanceof ConflictError && error.code === "EVENT_STATUS_MANAGED",
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("event editing is only allowed while open or ready for settlement", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+
+    const openEvent = await eventService.createEvent({
+      occurredAt: "2026-08-26T09:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Editable Open Event",
+    });
+    assert.doesNotThrow(() => assertEventEditable(openEvent));
+
+    const readyEvent = await eventService.markReadyForSettlement(openEvent.id);
+    assert.doesNotThrow(() => assertEventEditable(readyEvent));
+    await addEventParticipants(fixture.db, readyEvent.id, [fixture.characterOne.id]);
+
+    const settlement = await new SettlementLifecycleService(fixture.db).createDraftSettlement({
+      decidedAt: "2026-08-26T10:00:00.000Z",
+      eventId: readyEvent.id,
+      grossAmount: 100,
+      netAmount: 100,
+      organizationId: fixture.organization.id,
+      title: "Locks Event Editing",
+    });
+    assert.equal(settlement.status, "draft");
+
+    const partiallySettledEvent = await eventService.syncStatusFromSettlements(
+      readyEvent.id,
+    );
+    assert.throws(
+      () => assertEventEditable(partiallySettledEvent),
+      (error: unknown) =>
+        error instanceof AppError && error.code === "EVENT_NOT_EDITABLE",
     );
   } finally {
     await fixture.cleanup();
@@ -702,6 +776,72 @@ test("settlement lifecycle can auto-assign keys and default unit assets", async 
       "calculated",
     );
     assert.equal(calculated.status, "calculated");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("settlement editing is only allowed while draft and before allocations exist", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const settlementService = new SettlementLifecycleService(fixture.db);
+    const allocationService = new AllocationLifecycleService(fixture.db);
+
+    const event = await eventService.createEvent({
+      occurredAt: "2026-08-26T16:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Editable Settlement Event",
+    });
+    await addEventParticipants(fixture.db, event.id, [fixture.characterOne.id]);
+    await eventService.markReadyForSettlement(event.id);
+
+    const editableSettlement = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-26T17:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 1200,
+      netAmount: 1200,
+      organizationId: fixture.organization.id,
+      title: "Editable Draft Settlement",
+    });
+    await assertSettlementEditable(fixture.db, editableSettlement);
+
+    await allocationService.createPendingAllocation({
+      amount: 1200,
+      characterId: fixture.characterOne.id,
+      settlementId: editableSettlement.id,
+    });
+    await assert.rejects(
+      () => assertSettlementEditable(fixture.db, editableSettlement),
+      (error: unknown) =>
+        error instanceof AppError &&
+        error.code === "SETTLEMENT_ALLOCATIONS_ALREADY_CREATED",
+    );
+
+    const eventTwo = await eventService.createEvent({
+      occurredAt: "2026-08-26T18:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Calculated Settlement Event",
+    });
+    await addEventParticipants(fixture.db, eventTwo.id, [fixture.characterOne.id]);
+    await eventService.markReadyForSettlement(eventTwo.id);
+
+    const calculatedSettlement = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-26T19:00:00.000Z",
+      eventId: eventTwo.id,
+      grossAmount: 800,
+      netAmount: 800,
+      organizationId: fixture.organization.id,
+      title: "Calculated Settlement",
+    });
+    const updatedCalculatedSettlement = await settlementService.markCalculated(
+      calculatedSettlement.id,
+    );
+
+    await assert.rejects(
+      () => assertSettlementEditable(fixture.db, updatedCalculatedSettlement),
+      (error: unknown) => error instanceof AppError && error.code === "SETTLEMENT_NOT_EDITABLE",
+    );
   } finally {
     await fixture.cleanup();
   }

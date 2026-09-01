@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import type { Context } from "hono";
+import type { DatabaseClient } from "../../infrastructure/database/database-client";
 import { D1Client } from "../../infrastructure/d1/d1-client";
 import { KvJsonRepository } from "../../infrastructure/kv/kv-json-repository";
 import { cacheKeys } from "../../lib/cache-keys";
 import { AppError, buildErrorResponseBody, ensureRequestId } from "../../lib/errors";
 import { getSessionCookie } from "../../lib/session-cookie";
 import { SnapshotCacheService } from "../../services/cache/snapshot-cache-service";
+import { AssetsRepository } from "../../repositories/assets-repository";
 import { CharactersRepository } from "../../repositories/characters-repository";
 import { EventParticipantsRepository } from "../../repositories/event-participants-repository";
 import { EventsRepository } from "../../repositories/events-repository";
@@ -13,6 +16,8 @@ import { GamesRepository } from "../../repositories/games-repository";
 import { OrganizationMembersRepository } from "../../repositories/organization-members-repository";
 import { OrganizationGamesRepository } from "../../repositories/organization-games-repository";
 import { OrganizationsRepository } from "../../repositories/organizations-repository";
+import { SettlementAllocationsRepository } from "../../repositories/settlement-allocations-repository";
+import { SettlementsRepository } from "../../repositories/settlements-repository";
 import type {
   AssetRecord,
   EventRecord,
@@ -54,6 +59,7 @@ import {
   createLedgerBatchClaimsRoute,
   createLedgerClaimRoute,
   createLedgerEventRoute,
+  settleLedgerEventRoute,
   createLedgerSettlementDisbursementRoute,
   createLedgerSettlementRoute,
   getCharacterLedgerDashboardDetailRoute,
@@ -69,6 +75,7 @@ import {
   updateLedgerClaimStatusRoute,
   updateLedgerEventRoute,
   updateLedgerEventStatusRoute,
+  updateLedgerSettlementRoute,
   updateLedgerSettlementStatusRoute,
 } from "./schema";
 
@@ -130,6 +137,44 @@ type SettlementParticipantValidation = {
   requiresConfirmation: boolean;
   unexpectedRecipientCharacterIds: number[];
 };
+
+export function assertEventEditable(event: EventRecord) {
+  if (event.status === "open" || event.status === "ready_for_settlement") {
+    return;
+  }
+
+  throw new AppError(
+    "Only open or ready-for-settlement events can be edited",
+    409,
+    {
+      code: "EVENT_NOT_EDITABLE",
+    },
+  );
+}
+
+export async function assertSettlementEditable(
+  db: DatabaseClient,
+  settlement: SettlementRecord,
+) {
+  if (settlement.status !== "draft") {
+    throw new AppError("Only draft settlements can be edited", 409, {
+      code: "SETTLEMENT_NOT_EDITABLE",
+    });
+  }
+
+  const allocations = await new SettlementAllocationsRepository(db).listBySettlement(
+    settlement.id,
+  );
+  if (allocations.length > 0) {
+    throw new AppError(
+      "Settlement cannot be edited after allocations have been created",
+      409,
+      {
+        code: "SETTLEMENT_ALLOCATIONS_ALREADY_CREATED",
+      },
+    );
+  }
+}
 
 type PublicOrganizationContext = {
   id: number;
@@ -296,12 +341,98 @@ async function computeSettlementParticipantValidation(
   };
 }
 
+async function validateSettlementParticipantsOrRespond(
+  c: Context<AppBindings>,
+  db: D1Client,
+  input: {
+    confirmParticipantException?: boolean;
+    eventId?: number | null;
+    organizationId: number;
+    participantExceptionReason?: string | null;
+    recipientCharacterIds?: number[];
+  },
+): Promise<
+  | {
+      conflict: null;
+      participantExceptionConfirmed: boolean;
+      participantExceptionReason: string | null;
+      participantValidation: SettlementParticipantValidation | null;
+    }
+  | {
+      conflict: {
+        body: ReturnType<typeof buildSettlementParticipantConflictResponse> & {
+          requestId: string;
+        };
+        status: 409;
+      };
+      participantExceptionConfirmed: false;
+      participantExceptionReason: null;
+      participantValidation: SettlementParticipantValidation;
+    }
+> {
+  if (!input.eventId) {
+    return {
+      conflict: null,
+      participantExceptionConfirmed: false,
+      participantExceptionReason: null,
+      participantValidation: null,
+    };
+  }
+
+  await requireLedgerEvent(db, input.eventId, input.organizationId);
+  const participantValidation = await computeSettlementParticipantValidation(
+    db,
+    input.eventId,
+    input.recipientCharacterIds ?? [],
+  );
+
+  if (
+    participantValidation.requiresConfirmation &&
+    input.confirmParticipantException !== true
+  ) {
+    return {
+      conflict: {
+        body: {
+          ...buildSettlementParticipantConflictResponse(
+            c,
+            participantValidation.eventParticipantCount === 0
+              ? "This event has no recorded participants. Confirm the exception before creating a settlement."
+              : "Settlement recipients do not match the event participants. Confirm the exception before creating a settlement.",
+            participantValidation,
+          ),
+          requestId: ensureRequestId(c),
+        },
+        status: 409,
+      },
+      participantExceptionConfirmed: false,
+      participantExceptionReason: null,
+      participantValidation,
+    };
+  }
+
+  return {
+    conflict: null,
+    participantExceptionConfirmed:
+      participantValidation.requiresConfirmation === true &&
+      input.confirmParticipantException === true,
+    participantExceptionReason:
+      participantValidation.requiresConfirmation === true
+        ? input.participantExceptionReason ?? null
+        : null,
+    participantValidation,
+  };
+}
+
 organizationLedgerRouter.use(
   "/:organization/ledger/events",
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
   "/:organization/ledger/events/:eventId/status",
+  requireLedgerManager,
+);
+organizationLedgerRouter.use(
+  "/:organization/ledger/events/:eventId/settle",
   requireLedgerManager,
 );
 organizationLedgerRouter.use(
@@ -791,9 +922,10 @@ organizationLedgerRouter.openapi(updateLedgerEventRoute, async (c) => {
     assertLedgerManager(membership);
     const db = new D1Client(c.env.APP_DB);
     const event = await requireLedgerEvent(db, paramsParsed.data.eventId, organization.id);
+    assertEventEditable(event);
 
     if (bodyParsed.data.assetId !== undefined && bodyParsed.data.assetId !== null) {
-      const asset = await new (await import("../../repositories/assets-repository")).AssetsRepository(db).findById(bodyParsed.data.assetId);
+      const asset = await new AssetsRepository(db).findById(bodyParsed.data.assetId);
       if (!asset || asset.organization_id !== organization.id) {
         throw new AppError("Asset not found", 404, { code: "ASSET_NOT_FOUND" });
       }
@@ -1185,33 +1317,19 @@ organizationLedgerRouter.openapi(createLedgerSettlementRoute, async (c) => {
     assertLedgerManager(membership);
 
     const db = new D1Client(c.env.APP_DB);
-    let participantValidation: SettlementParticipantValidation | null = null;
-    if (parsed.data.eventId) {
-      await requireLedgerEvent(db, parsed.data.eventId, organization.id);
-      participantValidation = await computeSettlementParticipantValidation(
-        db,
-        parsed.data.eventId,
-        parsed.data.recipientCharacterIds ?? [],
-      );
+    const settlementValidation = await validateSettlementParticipantsOrRespond(c, db, {
+      confirmParticipantException: parsed.data.confirmParticipantException,
+      eventId: parsed.data.eventId,
+      organizationId: organization.id,
+      participantExceptionReason: parsed.data.participantExceptionReason,
+      recipientCharacterIds: parsed.data.recipientCharacterIds,
+    });
 
-      if (
-        participantValidation.requiresConfirmation &&
-        parsed.data.confirmParticipantException !== true
-      ) {
-        return c.json(
-          {
-            ...buildSettlementParticipantConflictResponse(
-              c,
-              participantValidation.eventParticipantCount === 0
-                ? "This event has no recorded participants. Confirm the exception before creating a settlement."
-                : "Settlement recipients do not match the event participants. Confirm the exception before creating a settlement.",
-              participantValidation,
-            ),
-            requestId: ensureRequestId(c),
-          },
-          409,
-        );
-      }
+    if (settlementValidation.conflict) {
+      return c.json(
+        settlementValidation.conflict.body,
+        settlementValidation.conflict.status,
+      );
     }
 
     const settlement = await new SettlementLifecycleService(db).createDraftSettlement({
@@ -1228,12 +1346,8 @@ organizationLedgerRouter.openapi(createLedgerSettlementRoute, async (c) => {
       notes: parsed.data.notes,
       organizationId: organization.id,
       participantExceptionConfirmed:
-        participantValidation?.requiresConfirmation === true &&
-        parsed.data.confirmParticipantException === true,
-      participantExceptionReason:
-        participantValidation?.requiresConfirmation === true
-          ? parsed.data.participantExceptionReason ?? null
-          : null,
+        settlementValidation.participantExceptionConfirmed,
+      participantExceptionReason: settlementValidation.participantExceptionReason,
       payerRef: parsed.data.payerRef,
       payerType: parsed.data.payerType,
       settlementType: parsed.data.settlementType,
@@ -1245,7 +1359,89 @@ organizationLedgerRouter.openapi(createLedgerSettlementRoute, async (c) => {
       {
         message: "Settlement created successfully.",
         settlement: toSettlementResponse(settlement),
-        participantValidation,
+        participantValidation: settlementValidation.participantValidation,
+      },
+      201,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(settleLedgerEventRoute, async (c) => {
+  const paramsParsed = settleLedgerEventRoute.request.params.safeParse(c.req.param());
+  if (!paramsParsed.success) {
+    return c.json(
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
+      422,
+    );
+  }
+
+  const schema =
+    settleLedgerEventRoute.request.body.content["application/json"].schema;
+  const parsed = schema.safeParse(await c.req.json());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const membership = requireLedgerMembership(c);
+    const session = requireLedgerSession(c);
+    assertLedgerManager(membership);
+
+    const db = new D1Client(c.env.APP_DB);
+    const settlementValidation = await validateSettlementParticipantsOrRespond(c, db, {
+      confirmParticipantException: parsed.data.confirmParticipantException,
+      eventId: paramsParsed.data.eventId,
+      organizationId: organization.id,
+      participantExceptionReason: parsed.data.participantExceptionReason,
+      recipientCharacterIds: parsed.data.recipientCharacterIds,
+    });
+
+    if (settlementValidation.conflict) {
+      return c.json(
+        settlementValidation.conflict.body,
+        settlementValidation.conflict.status,
+      );
+    }
+
+    const settlement = await new SettlementLifecycleService(db).settleEvent({
+      allocationMode: parsed.data.allocationMode,
+      createdByUserId: session.user.id,
+      decidedAt: parsed.data.decidedAt,
+      eventId: paramsParsed.data.eventId,
+      feeAmount: parsed.data.feeAmount,
+      feeMode: parsed.data.feeMode,
+      feePercent: parsed.data.feePercent,
+      feeRuleKey: parsed.data.feeRuleKey,
+      grossAmount: parsed.data.grossAmount,
+      netAmount: parsed.data.netAmount,
+      notes: parsed.data.notes,
+      organizationId: organization.id,
+      participantExceptionConfirmed:
+        settlementValidation.participantExceptionConfirmed,
+      participantExceptionReason: settlementValidation.participantExceptionReason,
+      payerRef: parsed.data.payerRef,
+      payerType: parsed.data.payerType,
+      settlementType: parsed.data.settlementType,
+      title: parsed.data.title,
+      unitAssetId: parsed.data.unitAssetId,
+    });
+
+    return c.json(
+      {
+        message: "Event settled successfully.",
+        settlement: toSettlementResponse(settlement),
+        participantValidation: settlementValidation.participantValidation,
       },
       201,
     );
@@ -1295,6 +1491,86 @@ organizationLedgerRouter.openapi(updateLedgerSettlementStatusRoute, async (c) =>
     return c.json(
       {
         message: "Settlement status updated successfully.",
+        settlement: toSettlementResponse(updated),
+        participantValidation: null,
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(updateLedgerSettlementRoute, async (c) => {
+  const paramsParsed =
+    updateLedgerSettlementRoute.request.params.safeParse(c.req.param());
+  if (!paramsParsed.success) {
+    return c.json(
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
+      422,
+    );
+  }
+
+  const bodySchema =
+    updateLedgerSettlementRoute.request.body.content["application/json"].schema;
+  const bodyParsed = bodySchema.safeParse(await c.req.json());
+  if (!bodyParsed.success) {
+    return c.json(
+      validationErrorFromIssues(bodyParsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const membership = requireLedgerMembership(c);
+    assertLedgerManager(membership);
+
+    const db = new D1Client(c.env.APP_DB);
+    const settlement = await requireLedgerSettlement(
+      db,
+      paramsParsed.data.settlementId,
+      organization.id,
+    );
+    await assertSettlementEditable(db, settlement);
+
+    if (bodyParsed.data.unitAssetId !== undefined && bodyParsed.data.unitAssetId !== null) {
+      const asset = await new AssetsRepository(db).findById(bodyParsed.data.unitAssetId);
+      if (
+        !asset ||
+        (asset.organization_id !== null && asset.organization_id !== organization.id)
+      ) {
+        throw new AppError("Settlement unit asset not found", 404, {
+          code: "SETTLEMENT_UNIT_ASSET_NOT_FOUND",
+        });
+      }
+    }
+
+    const updated = await new SettlementsRepository(db).update(settlement.id, {
+      allocationMode: bodyParsed.data.allocationMode,
+      decidedAt: bodyParsed.data.decidedAt,
+      feeAmount: bodyParsed.data.feeAmount,
+      feeMode: bodyParsed.data.feeMode,
+      feePercent: bodyParsed.data.feePercent,
+      feeRuleKey: bodyParsed.data.feeRuleKey,
+      grossAmount: bodyParsed.data.grossAmount,
+      netAmount: bodyParsed.data.netAmount,
+      notes: bodyParsed.data.notes,
+      payerRef: bodyParsed.data.payerRef,
+      payerType: bodyParsed.data.payerType,
+      participantExceptionReason: bodyParsed.data.participantExceptionReason,
+      settlementType: bodyParsed.data.settlementType,
+      title: bodyParsed.data.title,
+      unitAssetId: bodyParsed.data.unitAssetId,
+    });
+
+    return c.json(
+      {
+        message: "Settlement updated successfully.",
         settlement: toSettlementResponse(updated),
         participantValidation: null,
       },

@@ -80,6 +80,25 @@ export class SettlementLifecycleService implements SettlementLifecyclePort {
     return created;
   }
 
+  async settleEvent(
+    input: CreateManagedSettlementInput & { eventId: number },
+  ): Promise<SettlementRecord> {
+    const eventService = new EventLifecycleService(this.db);
+    const event = await eventService.syncStatusFromSettlements(input.eventId);
+
+    if (event.organization_id !== input.organizationId) {
+      throw new ConflictError("Settlement event does not belong to the organization", {
+        code: "SETTLEMENT_EVENT_ORGANIZATION_MISMATCH",
+      });
+    }
+
+    if (event.status === "open") {
+      await eventService.markReadyForSettlement(event.id);
+    }
+
+    return this.createDraftSettlement(input);
+  }
+
   async transitionStatus(
     settlementId: number,
     nextStatus: SettlementStatus,

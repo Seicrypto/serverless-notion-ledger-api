@@ -285,6 +285,35 @@ const createSettlementRequestSchema = z
   })
   .openapi("CreateLedgerSettlementRequest");
 
+const settleEventRequestSchema = createSettlementRequestSchema
+  .omit({ eventId: true })
+  .openapi("SettleLedgerEventRequest");
+
+const updateSettlementRequestSchema = z
+  .object({
+    allocationMode: z.enum(["equal", "weight", "manual"]).optional(),
+    decidedAt: z.string().datetime().optional(),
+    feeAmount: z.number().nullable().optional(),
+    feeMode: z.enum(["none", "percent", "fixed", "rule"]).optional(),
+    feePercent: z.number().nullable().optional(),
+    feeRuleKey: z.string().trim().max(255).nullable().optional(),
+    grossAmount: z.number().nonnegative().optional(),
+    netAmount: z.number().nonnegative().optional(),
+    notes: z.string().trim().max(4000).nullable().optional(),
+    payerRef: z.string().trim().max(255).nullable().optional(),
+    payerType: z.enum(["character", "org_treasury", "external", "custom"]).optional(),
+    participantExceptionReason: z.string().trim().max(1000).nullable().optional(),
+    settlementType: z
+      .enum(["sale", "bonus", "salary", "reward", "subsidy", "adjustment"])
+      .optional(),
+    title: z.string().trim().min(1).max(160).optional(),
+    unitAssetId: z.number().int().positive().nullable().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  })
+  .openapi("UpdateLedgerSettlementRequest");
+
 const updateSettlementStatusRequestSchema = z
   .object({
     status: z.enum(["calculated", "paying", "paid", "cancelled"]),
@@ -972,6 +1001,37 @@ export const updateLedgerEventStatusRoute = createRoute({
   },
 });
 
+export const settleLedgerEventRoute = createRoute({
+  method: "post",
+  path: "/{organization}/ledger/events/{eventId}/settle",
+  tags: ["Ledger", "Events", "Settlements"],
+  request: {
+    params: eventIdParamSchema,
+    body: {
+      content: { "application/json": { schema: settleEventRequestSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      content: { "application/json": { schema: settlementResponseSchema } },
+      description: "Auto-ready an event when needed and create a draft settlement from it.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Event not found." },
+    409: {
+      content: {
+        "application/json": {
+          schema: z.union([errorSchema, settlementParticipantConflictResponseSchema]),
+        },
+      },
+      description: "Business rule conflict or participant confirmation required.",
+    },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
 export const createLedgerSettlementRoute = createRoute({
   method: "post",
   path: "/{organization}/ledger/settlements",
@@ -986,7 +1046,7 @@ export const createLedgerSettlementRoute = createRoute({
   responses: {
     201: {
       content: { "application/json": { schema: settlementResponseSchema } },
-      description: "Create a draft settlement.",
+      description: "Create a draft settlement from a ready or partially settled event.",
     },
     401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },
@@ -999,6 +1059,30 @@ export const createLedgerSettlementRoute = createRoute({
       },
       description: "Business rule conflict or participant confirmation required.",
     },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const updateLedgerSettlementRoute = createRoute({
+  method: "patch",
+  path: "/{organization}/ledger/settlements/{settlementId}",
+  tags: ["Ledger", "Settlements"],
+  request: {
+    params: settlementIdParamSchema,
+    body: {
+      content: { "application/json": { schema: updateSettlementRequestSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: settlementResponseSchema } },
+      description: "Update an editable draft settlement before allocations begin.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Settlement or related asset not found." },
+    409: { content: { "application/json": { schema: errorSchema } }, description: "Business rule conflict." },
     422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
   },
 });
