@@ -706,6 +706,10 @@ organizationLedgerRouter.use(
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
+  "/:organization/ledger/settlements/*",
+  requireLedgerMember,
+);
+organizationLedgerRouter.use(
   "/:organization/ledger/settlements/:settlementId/status",
   requireLedgerManager,
 );
