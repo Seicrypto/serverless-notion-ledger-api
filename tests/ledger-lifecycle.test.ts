@@ -26,6 +26,7 @@ import {
   buildEventDetailResponse,
   buildSettlementWorkspaceResponseData,
   listEventParticipantSummaryMap,
+  listLedgerEventSummaryLookup,
   mapEventStatusGroup,
 } from "../src/modules/ledger/route";
 import { D1Client } from "../src/infrastructure/d1/d1-client";
@@ -326,6 +327,92 @@ test("event detail and summary expose participant suggestions for settlement wor
       participantCharacterIds: [fixture.characterOne.id, fixture.characterTwo.id],
       participantCount: 2,
     });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("event summary lookup returns compact user-facing event rows with game and time filters", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const games = new GamesRepository(fixture.db);
+    const assets = new AssetsRepository(fixture.db);
+
+    const otherGame = await games.create({
+      name: "Other Ledger Game",
+      slug: "other-ledger-game",
+    });
+    const lookupAsset = await assets.create({
+      assetKey: "lookup-asset-coin",
+      assetType: "currency",
+      gameId: fixture.game.id,
+      name: "Lookup Coin",
+      normalizedName: "lookup coin",
+      scope: "organization",
+      organizationId: fixture.organization.id,
+    });
+
+    await eventService.createEvent({
+      assetId: lookupAsset.id,
+      gameId: otherGame.id,
+      holderRef: "external-trader",
+      holderType: "external",
+      occurredAt: "2026-08-25T10:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Other Game Event",
+    });
+
+    await eventService.createEvent({
+      assetId: lookupAsset.id,
+      gameId: fixture.game.id,
+      holderRef: String(fixture.characterOne.id),
+      holderType: "character",
+      occurredAt: "2026-08-26T10:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Older Matching Event",
+    });
+
+    await eventService.createEvent({
+      assetId: lookupAsset.id,
+      gameId: fixture.game.id,
+      holderRef: String(fixture.characterTwo.id),
+      holderType: "character",
+      occurredAt: "2026-08-27T10:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Newest Matching Event",
+    });
+
+    const result = await listLedgerEventSummaryLookup({
+      db: fixture.db as unknown as D1Client,
+      fromOccurredAt: "2026-08-26T00:00:00.000Z",
+      gameId: fixture.game.id,
+      limit: 1,
+      offset: 0,
+      organizationId: fixture.organization.id,
+      toOccurredAt: "2026-08-27T23:59:59.999Z",
+    });
+
+    assert.equal(result.events.length, 1);
+    assert.equal(result.pagination.hasMore, true);
+    assert.equal(result.events[0]?.event.title, "Newest Matching Event");
+    assert.equal(result.events[0]?.event.id !== undefined, true);
+    assert.equal(result.events[0]?.occurredAt, "2026-08-27T10:00:00.000Z");
+    assert.equal(result.events[0]?.holder.id, fixture.characterTwo.id);
+    assert.equal(result.events[0]?.holder.label, fixture.characterTwo.name);
+    assert.equal(result.events[0]?.asset?.id, lookupAsset.id);
+    assert.equal(result.events[0]?.asset?.name, "Lookup Coin");
+
+    const secondPage = await listLedgerEventSummaryLookup({
+      db: fixture.db as unknown as D1Client,
+      gameId: fixture.game.id,
+      limit: 10,
+      offset: 1,
+      organizationId: fixture.organization.id,
+    });
+
+    assert.equal(secondPage.events.length, 1);
+    assert.equal(secondPage.events[0]?.event.title, "Older Matching Event");
   } finally {
     await fixture.cleanup();
   }
