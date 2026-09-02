@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { DatabaseClient } from "../src/infrastructure/database/database-client";
 import { AllocationLifecycleService } from "../src/services/ledger/allocation-lifecycle-service";
+import { BatchClaimDispatchService } from "../src/services/ledger/batch-claim-dispatch-service";
 import { ClaimLifecycleService } from "../src/services/ledger/claim-lifecycle-service";
+import { ClaimWorkspaceQueryService } from "../src/services/ledger/claim-workspace-query-service";
 import { ClaimableRecipientsQueryService } from "../src/services/ledger/claimable-recipients-query-service";
 import { EventLifecycleService } from "../src/services/ledger/event-lifecycle-service";
 import { DashboardQueryService } from "../src/services/ledger/dashboard-query-service";
@@ -246,6 +248,167 @@ test("high-level settle flow creates a calculated settlement with pending alloca
     assert.equal(claimableRecipients.length, 2);
     assert.equal(claimableRecipients[0]?.pendingClaimAmountTotal, 1000);
     assert.equal(claimableRecipients[1]?.pendingClaimAmountTotal, 1000);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("claim workspace queries provide paged summaries and bootstrap workspaces", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const orchestration = new EventSettlementOrchestrationService(fixture.db);
+    const workspaceService = new ClaimWorkspaceQueryService(fixture.db);
+
+    const event = await eventService.createEvent({
+      eventKey: "evt-claim-workspace-1",
+      occurredAt: "2026-08-28T09:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Claim Workspace Event",
+    });
+    await addEventParticipants(fixture.db, event.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+
+    const settled = await orchestration.settleEventWithAllocations({
+      allocationMode: "manual",
+      decidedAt: "2026-08-28T10:00:00.000Z",
+      eventId: event.id,
+      grossAmount: 900,
+      netAmount: 900,
+      organizationId: fixture.organization.id,
+      recipients: [
+        { amount: 400, characterId: fixture.characterOne.id },
+        { amount: 500, characterId: fixture.characterTwo.id },
+      ],
+      title: "Claim Workspace Settlement",
+    });
+
+    const summary = await workspaceService.listClaimableRecipientSummaries({
+      limit: 1,
+      offset: 0,
+      organizationId: fixture.organization.id,
+      sortBy: "pendingAmount",
+      sortOrder: "desc",
+    });
+    assert.equal(summary.recipients.length, 1);
+    assert.equal(summary.pagination.hasMore, true);
+    assert.equal(summary.recipients[0]?.characterId, fixture.characterTwo.id);
+    assert.equal(summary.recipients[0]?.pendingClaimAmountTotal, 500);
+
+    const recipientWorkspace = await workspaceService.getClaimableRecipientWorkspace({
+      characterId: fixture.characterOne.id,
+      organizationId: fixture.organization.id,
+    });
+    assert.equal(recipientWorkspace.recipient.characterId, fixture.characterOne.id);
+    assert.equal(recipientWorkspace.allocations.length, 1);
+    assert.equal(recipientWorkspace.allocations[0]?.settlementId, settled.settlement.id);
+    assert.equal(recipientWorkspace.unitBreakdown[0]?.amountTotal, 400);
+
+    const disburseSummary = await workspaceService.listDisburseableEventSummaries({
+      limit: 10,
+      offset: 0,
+      organizationId: fixture.organization.id,
+    });
+    assert.equal(disburseSummary.items.length, 1);
+    assert.equal(disburseSummary.items[0]?.settlementId, settled.settlement.id);
+    assert.equal(disburseSummary.items[0]?.pendingRecipientCount, 2);
+    assert.equal(disburseSummary.items[0]?.totalAmount, 900);
+
+    const settlementWorkspace =
+      await workspaceService.getSettlementDisbursementWorkspace({
+        organizationId: fixture.organization.id,
+        settlementId: settled.settlement.id,
+      });
+    assert.equal(settlementWorkspace.settlement.id, settled.settlement.id);
+    assert.equal(settlementWorkspace.recipients.length, 2);
+    assert.equal(settlementWorkspace.recipients[0]?.claimStatus, "pending");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("high-level claim dispatch supports recipient mode and settlement mode", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const orchestration = new EventSettlementOrchestrationService(fixture.db);
+    const dispatch = new BatchClaimDispatchService(fixture.db);
+    const claimableService = new ClaimableRecipientsQueryService(fixture.db);
+
+    const eventOne = await eventService.createEvent({
+      eventKey: "evt-claim-dispatch-recipient",
+      occurredAt: "2026-08-29T09:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Recipient Claim Event",
+    });
+    await addEventParticipants(fixture.db, eventOne.id, [fixture.characterOne.id]);
+    const settledOne = await orchestration.settleEventWithAllocations({
+      decidedAt: "2026-08-29T10:00:00.000Z",
+      eventId: eventOne.id,
+      grossAmount: 300,
+      netAmount: 300,
+      organizationId: fixture.organization.id,
+      recipients: [{ amount: 300, characterId: fixture.characterOne.id }],
+      title: "Recipient Claim Settlement",
+    });
+
+    const recipientResult = await dispatch.recordRecipientClaims({
+      characterId: fixture.characterOne.id,
+      claimedAt: "2026-08-29T10:30:00.000Z",
+      items: [{ allocationId: settledOne.allocations[0]!.id, amount: 300 }],
+      organizationId: fixture.organization.id,
+    });
+    assert.equal(recipientResult.claims.length, 1);
+
+    const eventTwo = await eventService.createEvent({
+      eventKey: "evt-claim-dispatch-settlement",
+      occurredAt: "2026-08-30T09:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Settlement Claim Event",
+    });
+    await addEventParticipants(fixture.db, eventTwo.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+    const settledTwo = await orchestration.settleEventWithAllocations({
+      allocationMode: "manual",
+      decidedAt: "2026-08-30T10:00:00.000Z",
+      eventId: eventTwo.id,
+      grossAmount: 700,
+      netAmount: 700,
+      organizationId: fixture.organization.id,
+      recipients: [
+        { amount: 300, characterId: fixture.characterOne.id },
+        { amount: 400, characterId: fixture.characterTwo.id },
+      ],
+      title: "Settlement Claim Settlement",
+    });
+
+    const settlementResult = await dispatch.recordSettlementClaims({
+      claimedAt: "2026-08-30T10:30:00.000Z",
+      items: [
+        {
+          allocationId: settledTwo.allocations[0]!.id,
+          amount: 300,
+          characterId: fixture.characterOne.id,
+        },
+        {
+          allocationId: settledTwo.allocations[1]!.id,
+          amount: 400,
+          characterId: fixture.characterTwo.id,
+        },
+      ],
+      organizationId: fixture.organization.id,
+      settlementId: settledTwo.settlement.id,
+    });
+    assert.equal(settlementResult.claims.length, 2);
+
+    const remainingRecipients = await claimableService.listClaimableRecipients(
+      fixture.organization.id,
+    );
+    assert.equal(remainingRecipients.length, 0);
   } finally {
     await fixture.cleanup();
   }

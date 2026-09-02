@@ -684,6 +684,28 @@ const claimableRecipientSummaryListResponseSchema = z
   })
   .openapi("LedgerClaimableRecipientSummaryListResponse");
 
+const claimableRecipientSummaryQuerySchema = z
+  .object({
+    gameId: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    q: z.string().trim().min(1).max(160).optional(),
+    sortBy: z.enum(["pendingAmount", "updatedAt", "name"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
+  })
+  .openapi("LedgerClaimableRecipientSummaryQuery");
+
+const claimableRecipientSummaryPagedResponseSchema = z
+  .object({
+    pagination: paginationSchema,
+    recipients: z.array(
+      claimableRecipientSummarySchema.omit({
+        memberUserId: true,
+      }),
+    ),
+  })
+  .openapi("LedgerClaimableRecipientSummaryPagedResponse");
+
 const claimableRecipientDetailQuerySchema = z
   .object({
     includeSiblingCharacters: z.coerce.boolean().optional(),
@@ -732,6 +754,110 @@ const claimableRecipientDetailResponseSchema = z
   })
   .openapi("LedgerClaimableRecipientDetailResponse");
 
+const claimableRecipientWorkspaceResponseSchema = z
+  .object({
+    allocations: z.array(
+      z.object({
+        allocationId: z.number().int().positive(),
+        amount: z.number().nonnegative(),
+        eventId: z.number().int().positive().nullable(),
+        eventOccurredAt: z.string().nullable(),
+        eventStatus: z.string().nullable(),
+        eventTitle: z.string().nullable(),
+        ownerCharacterId: z.number().int().positive(),
+        ownerCharacterName: z.string(),
+        settlementDecidedAt: z.string(),
+        settlementId: z.number().int().positive(),
+        settlementTitle: z.string(),
+        settlementType: z.string(),
+        unitAssetId: z.number().int().positive().nullable(),
+        unitAssetName: z.string().nullable(),
+      }),
+    ),
+    defaults: z.object({
+      defaultClaimedAt: z.string().nullable(),
+      defaultMethod: z.enum(["manual", "in_game_mail", "trade", "bank", "other"]),
+    }),
+    recipient: z.object({
+      characterId: z.number().int().positive(),
+      characterName: z.string(),
+      memberDisplayName: z.string().nullable(),
+    }),
+    siblingCharacters: z.array(
+      z.object({
+        characterId: z.number().int().positive(),
+        characterName: z.string(),
+      }),
+    ),
+    unitBreakdown: z.array(claimableUnitBreakdownSchema),
+  })
+  .openapi("LedgerClaimableRecipientWorkspaceResponse");
+
+const disburseableEventSummaryQuerySchema = z
+  .object({
+    fromDecidedAt: z.string().datetime().optional(),
+    gameId: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    q: z.string().trim().min(1).max(160).optional(),
+    toDecidedAt: z.string().datetime().optional(),
+  })
+  .openapi("LedgerDisburseableEventSummaryQuery");
+
+const disburseableEventSummaryResponseSchema = z
+  .object({
+    items: z.array(
+      z.object({
+        decidedAt: z.string(),
+        eventId: z.number().int().positive().nullable(),
+        eventOccurredAt: z.string().nullable(),
+        eventTitle: z.string().nullable(),
+        holderLabel: z.string().nullable(),
+        pendingRecipientCount: z.number().int().nonnegative(),
+        settlementId: z.number().int().positive(),
+        settlementTitle: z.string(),
+        settlementType: z.string(),
+        totalAmount: z.number().nonnegative(),
+        unitAssetId: z.number().int().positive().nullable(),
+        unitAssetName: z.string().nullable(),
+      }),
+    ),
+    pagination: paginationSchema,
+  })
+  .openapi("LedgerDisburseableEventSummaryResponse");
+
+const settlementDisbursementWorkspaceResponseSchema = z
+  .object({
+    defaults: z.object({
+      defaultClaimedAt: z.string().nullable(),
+      defaultMethod: z.enum(["manual", "in_game_mail", "trade", "bank", "other"]),
+    }),
+    recipients: z.array(
+      z.object({
+        allocationId: z.number().int().positive(),
+        amount: z.number().nonnegative(),
+        characterId: z.number().int().positive(),
+        characterName: z.string(),
+        claimStatus: z.enum(["pending", "partial", "claimed"]),
+        claimableAmount: z.number().nonnegative(),
+        memberDisplayName: z.string().nullable(),
+      }),
+    ),
+    settlement: z.object({
+      decidedAt: z.string(),
+      eventId: z.number().int().positive().nullable(),
+      eventOccurredAt: z.string().nullable(),
+      eventTitle: z.string().nullable(),
+      id: z.number().int().positive(),
+      settlementType: z.string(),
+      title: z.string(),
+      totalAmount: z.number().nonnegative(),
+      unitAssetId: z.number().int().positive().nullable(),
+      unitAssetName: z.string().nullable(),
+    }),
+  })
+  .openapi("LedgerSettlementDisbursementWorkspaceResponse");
+
 const batchClaimItemRequestSchema = z
   .object({
     amount: z.number().nonnegative(),
@@ -757,6 +883,42 @@ const batchClaimsResponseSchema = z
     settlementsTouched: z.number().int().nonnegative(),
   })
   .openapi("LedgerBatchClaimsResponse");
+
+const claimableRecipientDisbursementRequestSchema = z
+  .object({
+    claimedAt: z.string().datetime(),
+    includeSiblingCharacters: z.boolean().optional(),
+    items: z
+      .array(
+        z.object({
+          allocationId: z.number().int().positive(),
+          amount: z.number().nonnegative(),
+        }),
+      )
+      .min(1)
+      .max(100),
+    method: z.enum(["manual", "in_game_mail", "trade", "bank", "other"]).optional(),
+    notes: z.string().trim().max(4000).nullable().optional(),
+  })
+  .openapi("LedgerClaimableRecipientDisbursementRequest");
+
+const settlementClaimsRequestSchema = z
+  .object({
+    claimedAt: z.string().datetime(),
+    items: z
+      .array(
+        z.object({
+          allocationId: z.number().int().positive(),
+          amount: z.number().nonnegative(),
+          characterId: z.number().int().positive(),
+        }),
+      )
+      .min(1)
+      .max(100),
+    method: z.enum(["manual", "in_game_mail", "trade", "bank", "other"]).optional(),
+    notes: z.string().trim().max(4000).nullable().optional(),
+  })
+  .openapi("LedgerSettlementClaimsRequest");
 
 const disbursementItemRequestSchema = z
   .object({
@@ -1129,6 +1291,28 @@ export const listLedgerClaimableRecipientsRoute = createRoute({
   },
 });
 
+export const listLedgerClaimableRecipientSummariesRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/claimable-recipients/summary",
+  tags: ["Ledger", "Claims"],
+  request: {
+    params: organizationParamSchema,
+    query: claimableRecipientSummaryQuerySchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": { schema: claimableRecipientSummaryPagedResponseSchema },
+      },
+      description: "List compact claimable recipient summaries for workspace navigation.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
 export const getLedgerClaimableRecipientRoute = createRoute({
   method: "get",
   path: "/{organization}/ledger/claimable-recipients/{characterId}",
@@ -1147,6 +1331,130 @@ export const getLedgerClaimableRecipientRoute = createRoute({
     401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
     404: { content: { "application/json": { schema: errorSchema } }, description: "Character not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const getLedgerClaimableRecipientWorkspaceRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/claimable-recipients/{characterId}/workspace",
+  tags: ["Ledger", "Claims"],
+  request: {
+    params: allocationIdParamSchema
+      .extend({
+        characterId: z.coerce.number().int().positive(),
+      })
+      .omit({ allocationId: true })
+      .openapi("LedgerClaimableRecipientWorkspaceParam"),
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": { schema: claimableRecipientWorkspaceResponseSchema },
+      },
+      description: "Get workspace bootstrap data for one claimable recipient.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Character not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const listLedgerDisburseableEventSummariesRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/disburseable-events/summary",
+  tags: ["Ledger", "Claims", "Settlements"],
+  request: {
+    params: organizationParamSchema,
+    query: disburseableEventSummaryQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: disburseableEventSummaryResponseSchema } },
+      description: "List disburseable settlement summaries for workspace navigation.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const getLedgerSettlementDisbursementWorkspaceRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/settlements/{settlementId}/disbursement-workspace",
+  tags: ["Ledger", "Claims", "Settlements"],
+  request: {
+    params: settlementIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": { schema: settlementDisbursementWorkspaceResponseSchema },
+      },
+      description: "Get workspace bootstrap data for disbursing one settlement.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Settlement not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const createLedgerClaimableRecipientDisbursementRoute = createRoute({
+  method: "post",
+  path: "/{organization}/ledger/claimable-recipients/{characterId}/disburse",
+  tags: ["Ledger", "Claims"],
+  request: {
+    params: allocationIdParamSchema
+      .extend({
+        characterId: z.coerce.number().int().positive(),
+      })
+      .omit({ allocationId: true })
+      .openapi("LedgerClaimableRecipientDisbursementParam"),
+    body: {
+      content: {
+        "application/json": { schema: claimableRecipientDisbursementRequestSchema },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      content: { "application/json": { schema: batchClaimsResponseSchema } },
+      description: "Record claims for a selected recipient and optional sibling characters.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Allocation or character not found." },
+    409: { content: { "application/json": { schema: errorSchema } }, description: "Business rule conflict." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const createLedgerSettlementClaimsRoute = createRoute({
+  method: "post",
+  path: "/{organization}/ledger/settlements/{settlementId}/claims",
+  tags: ["Ledger", "Claims", "Settlements"],
+  request: {
+    params: settlementIdParamSchema,
+    body: {
+      content: {
+        "application/json": { schema: settlementClaimsRequestSchema },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      content: { "application/json": { schema: batchClaimsResponseSchema } },
+      description: "Record claims for selected recipients under one settlement.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Settlement, allocation, or character not found." },
+    409: { content: { "application/json": { schema: errorSchema } }, description: "Business rule conflict." },
     422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
   },
 });

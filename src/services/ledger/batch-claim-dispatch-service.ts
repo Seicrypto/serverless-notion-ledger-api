@@ -6,6 +6,7 @@ import {
   requireLedgerSettlement,
 } from "../../modules/ledger/guards";
 import { SettlementClaimsRepository } from "../../repositories/settlement-claims-repository";
+import { CharactersRepository } from "../../repositories/characters-repository";
 import type { SettlementClaimMethod, SettlementClaimRecord } from "../../repositories/types";
 import { ClaimLifecycleService } from "./claim-lifecycle-service";
 import { SettlementLifecycleService } from "./settlement-lifecycle-service";
@@ -107,5 +108,125 @@ export class BatchClaimDispatchService {
       claims,
       settlementsTouched: touchedSettlementIds.size,
     };
+  }
+
+  async recordRecipientClaims(input: {
+    characterId: number;
+    claimedAt: string;
+    includeSiblingCharacters?: boolean;
+    items: Array<{
+      allocationId: number;
+      amount: number;
+    }>;
+    method?: SettlementClaimMethod;
+    notes?: string | null;
+    organizationId: number;
+  }): Promise<BatchClaimDispatchResult> {
+    const allowedCharacterIds = await this.resolveAllowedRecipientCharacterIds({
+      characterId: input.characterId,
+      includeSiblingCharacters: input.includeSiblingCharacters,
+      organizationId: input.organizationId,
+    });
+
+    const items = [];
+    for (const item of input.items) {
+      const allocation = await requireLedgerAllocation(
+        this.db,
+        item.allocationId,
+        input.organizationId,
+      );
+      if (!allocation.character_id || !allowedCharacterIds.has(allocation.character_id)) {
+        throw new ConflictError("Allocation does not belong to the requested recipient", {
+          code: "CLAIMABLE_RECIPIENT_ALLOCATION_MISMATCH",
+        });
+      }
+
+      items.push({
+        amount: item.amount,
+        claimedByCharacterId: allocation.character_id,
+        settlementAllocationId: allocation.id,
+      });
+    }
+
+    return this.recordBatchClaims({
+      claimedAt: input.claimedAt,
+      items,
+      method: input.method,
+      notes: input.notes,
+      organizationId: input.organizationId,
+    });
+  }
+
+  async recordSettlementClaims(input: {
+    claimedAt: string;
+    items: Array<{
+      allocationId: number;
+      amount: number;
+      characterId: number;
+    }>;
+    method?: SettlementClaimMethod;
+    notes?: string | null;
+    organizationId: number;
+    settlementId: number;
+  }): Promise<BatchClaimDispatchResult> {
+    const items = [];
+    for (const item of input.items) {
+      const allocation = await requireLedgerAllocation(
+        this.db,
+        item.allocationId,
+        input.organizationId,
+      );
+      if (allocation.settlement_id !== input.settlementId) {
+        throw new ConflictError("Allocation does not belong to the requested settlement", {
+          code: "SETTLEMENT_CLAIM_ALLOCATION_MISMATCH",
+        });
+      }
+      if (!allocation.character_id || allocation.character_id !== item.characterId) {
+        throw new ConflictError("Claim recipient must match the allocation recipient", {
+          code: "ALLOCATION_RECIPIENT_MISMATCH",
+        });
+      }
+
+      items.push({
+        amount: item.amount,
+        claimedByCharacterId: item.characterId,
+        settlementAllocationId: allocation.id,
+      });
+    }
+
+    return this.recordBatchClaims({
+      claimedAt: input.claimedAt,
+      items,
+      method: input.method,
+      notes: input.notes,
+      organizationId: input.organizationId,
+    });
+  }
+
+  private async resolveAllowedRecipientCharacterIds(input: {
+    characterId: number;
+    includeSiblingCharacters?: boolean;
+    organizationId: number;
+  }) {
+    const character = await requireLedgerCharacter(
+      this.db,
+      input.characterId,
+      input.organizationId,
+    );
+    const allowed = new Set<number>([character.id]);
+
+    if (!input.includeSiblingCharacters || !character.claimed_by_user_id) {
+      return allowed;
+    }
+
+    const siblings = await new CharactersRepository(this.db).listByOrganizationAndUser(
+      input.organizationId,
+      character.claimed_by_user_id,
+    );
+    for (const sibling of siblings) {
+      allowed.add(sibling.id);
+    }
+
+    return allowed;
   }
 }
