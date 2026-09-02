@@ -3956,6 +3956,113 @@
           "offset"
         ]
       },
+      "LedgerEventSummaryLookupResponse": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerEventSummaryLookupItem"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/LedgerPagination"
+          }
+        },
+        "required": [
+          "events",
+          "pagination"
+        ]
+      },
+      "LedgerEventSummaryLookupItem": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "event": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ]
+          },
+          "occurredAt": {
+            "type": "string"
+          },
+          "holder": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "exclusiveMinimum": 0
+              },
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ref": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "character",
+                  "org_treasury",
+                  "market",
+                  "external",
+                  "custom"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "ref",
+              "type"
+            ]
+          }
+        },
+        "required": [
+          "asset",
+          "event",
+          "occurredAt",
+          "holder"
+        ]
+      },
       "LedgerEventResponse": {
         "type": "object",
         "properties": {
@@ -11895,6 +12002,126 @@
           },
           "409": {
             "description": "Business rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization}/ledger/events/summary": {
+      "get": {
+        "tags": [
+          "Ledger",
+          "Events"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "organization",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false,
+            "name": "fromOccurredAt",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "gameId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false,
+            "name": "toOccurredAt",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List compact event summaries for one organization and game.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerEventSummaryLookupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization membership required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
             "content": {
               "application/json": {
                 "schema": {

@@ -121,6 +121,28 @@ const eventListItemSchema = eventSchema
   })
   .openapi("LedgerEventListItem");
 
+const eventSummaryLookupItemSchema = z
+  .object({
+    asset: z
+      .object({
+        id: z.number().int().positive(),
+        name: z.string(),
+      })
+      .nullable(),
+    event: z.object({
+      id: z.number().int().positive(),
+      title: z.string(),
+    }),
+    occurredAt: z.string(),
+    holder: z.object({
+      id: z.number().int().positive().nullable(),
+      label: z.string().nullable(),
+      ref: z.string().nullable(),
+      type: z.enum(["character", "org_treasury", "market", "external", "custom"]),
+    }),
+  })
+  .openapi("LedgerEventSummaryLookupItem");
+
 const settlementSchema = z
   .object({
     allocationMode: z.enum(["equal", "weight", "manual"]),
@@ -610,6 +632,23 @@ const eventListResponseSchema = z
   })
   .openapi("LedgerEventListResponse");
 
+const eventSummaryLookupQuerySchema = z
+  .object({
+    fromOccurredAt: z.string().datetime().optional(),
+    gameId: z.coerce.number().int().positive(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    toOccurredAt: z.string().datetime().optional(),
+  })
+  .openapi("LedgerEventSummaryLookupQuery");
+
+const eventSummaryLookupResponseSchema = z
+  .object({
+    events: z.array(eventSummaryLookupItemSchema),
+    pagination: paginationSchema,
+  })
+  .openapi("LedgerEventSummaryLookupResponse");
+
 const settlementListResponseSchema = z
   .object({
     pagination: paginationSchema,
@@ -939,6 +978,26 @@ export const listLedgerEventsRoute = createRoute({
     200: {
       content: { "application/json": { schema: eventListResponseSchema } },
       description: "List organization ledger events with filters.",
+    },
+    401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
+    403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },
+    404: { content: { "application/json": { schema: errorSchema } }, description: "Organization not found." },
+    422: { content: { "application/json": { schema: validationErrorSchema } }, description: "Validation failed." },
+  },
+});
+
+export const listLedgerEventSummariesRoute = createRoute({
+  method: "get",
+  path: "/{organization}/ledger/events/summary",
+  tags: ["Ledger", "Events"],
+  request: {
+    params: organizationParamSchema,
+    query: eventSummaryLookupQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: eventSummaryLookupResponseSchema } },
+      description: "List compact event summaries for one organization and game.",
     },
     401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization membership required." },

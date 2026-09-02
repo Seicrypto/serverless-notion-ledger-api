@@ -69,6 +69,7 @@ import {
   getOrganizationLedgerDashboardSummaryRoute,
   getLedgerSettlementDefaultsRoute,
   getLedgerSettlementWorkspaceRoute,
+  listLedgerEventSummariesRoute,
   listLedgerClaimableRecipientsRoute,
   listLedgerEventsRoute,
   listLedgerSettlementsRoute,
@@ -143,6 +144,24 @@ type SettlementParticipantValidation = {
 type EventParticipantSummary = {
   participantCharacterIds: number[];
   participantCount: number;
+};
+
+type EventSummaryLookupItem = {
+  asset: {
+    id: number;
+    name: string;
+  } | null;
+  event: {
+    id: number;
+    title: string;
+  };
+  occurredAt: string;
+  holder: {
+    id: number | null;
+    label: string | null;
+    ref: string | null;
+    type: EventRecord["holder_type"];
+  };
 };
 
 export function assertEventEditable(event: EventRecord) {
@@ -671,6 +690,10 @@ organizationLedgerRouter.use(
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
+  "/:organization/ledger/events/summary",
+  requireLedgerMember,
+);
+organizationLedgerRouter.use(
   "/:organization/ledger/events/:eventId/status",
   requireLedgerManager,
 );
@@ -938,6 +961,126 @@ organizationLedgerRouter.openapi(listLedgerEventsRoute, async (c) => {
       },
       200,
     );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
+export async function listLedgerEventSummaryLookup(input: {
+  db: D1Client;
+  fromOccurredAt?: string;
+  gameId: number;
+  limit: number;
+  offset: number;
+  organizationId: number;
+  toOccurredAt?: string;
+}): Promise<{
+  events: EventSummaryLookupItem[];
+  pagination: {
+    hasMore: boolean;
+    limit: number;
+    offset: number;
+  };
+}> {
+  const whereClauses = ["e.organization_id = ?", "e.game_id = ?"];
+  const bindings: Array<number | string> = [input.organizationId, input.gameId];
+
+  if (input.fromOccurredAt) {
+    whereClauses.push("e.occurred_at >= ?");
+    bindings.push(input.fromOccurredAt);
+  }
+
+  if (input.toOccurredAt) {
+    whereClauses.push("e.occurred_at <= ?");
+    bindings.push(input.toOccurredAt);
+  }
+
+  bindings.push(input.limit + 1, input.offset);
+
+  const rows = await input.db.all<
+    EventRecord & {
+      asset_name: string | null;
+    }
+  >(
+    `SELECT
+       e.*,
+       a.name AS asset_name
+     FROM events e
+     LEFT JOIN assets a
+       ON a.id = e.asset_id
+     WHERE ${whereClauses.join(" AND ")}
+     ORDER BY e.occurred_at DESC, e.id DESC
+     LIMIT ?
+     OFFSET ?`,
+    ...bindings,
+  );
+
+  const hasMore = rows.length > input.limit;
+  const events = hasMore ? rows.slice(0, input.limit) : rows;
+  const items: EventSummaryLookupItem[] = [];
+
+  for (const event of events) {
+    const holder = await resolveEventHolder(input.db, event);
+    items.push({
+      asset:
+        event.asset_id === null
+          ? null
+          : {
+              id: event.asset_id,
+              name: event.asset_name ?? "",
+            },
+      event: {
+        id: event.id,
+        title: event.title,
+      },
+      occurredAt: event.occurred_at,
+      holder: {
+        id: holder.character?.id ?? null,
+        label: holder.character?.name ?? holder.ref,
+        ref: holder.ref,
+        type: holder.type,
+      },
+    });
+  }
+
+  return {
+    events: items,
+    pagination: {
+      hasMore,
+      limit: input.limit,
+      offset: input.offset,
+    },
+  };
+}
+
+organizationLedgerRouter.openapi(listLedgerEventSummariesRoute, async (c) => {
+  const parsed = listLedgerEventSummariesRoute.request.query.safeParse(c.req.query());
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c), "query"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const limit = parsed.data.limit ?? 20;
+    const offset = parsed.data.offset ?? 0;
+    const response = await listLedgerEventSummaryLookup({
+      db: new D1Client(c.env.APP_DB),
+      fromOccurredAt: parsed.data.fromOccurredAt,
+      gameId: parsed.data.gameId,
+      limit,
+      offset,
+      organizationId: organization.id,
+      toOccurredAt: parsed.data.toOccurredAt,
+    });
+
+    return c.json(response, 200);
   } catch (error) {
     if (error instanceof AppError) {
       return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
