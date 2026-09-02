@@ -31,6 +31,7 @@ import { AssetIdentityResolutionService } from "../../services/assets/asset-iden
 import { AllocationLifecycleService } from "../../services/ledger/allocation-lifecycle-service";
 import { BatchClaimDispatchService } from "../../services/ledger/batch-claim-dispatch-service";
 import { ClaimLifecycleService } from "../../services/ledger/claim-lifecycle-service";
+import { ClaimWorkspaceQueryService } from "../../services/ledger/claim-workspace-query-service";
 import { ClaimableRecipientsQueryService } from "../../services/ledger/claimable-recipients-query-service";
 import { DashboardQueryService } from "../../services/ledger/dashboard-query-service";
 import { EventLifecycleService } from "../../services/ledger/event-lifecycle-service";
@@ -58,19 +59,25 @@ import {
   createLedgerAllocationRoute,
   createLedgerEventBatchRoute,
   createLedgerBatchClaimsRoute,
+  createLedgerClaimableRecipientDisbursementRoute,
   createLedgerClaimRoute,
   createLedgerEventRoute,
+  createLedgerSettlementClaimsRoute,
   settleLedgerEventRoute,
   createLedgerSettlementDisbursementRoute,
   createLedgerSettlementRoute,
   getCharacterLedgerDashboardDetailRoute,
   getLedgerEventRoute,
   getLedgerClaimableRecipientRoute,
+  getLedgerClaimableRecipientWorkspaceRoute,
   getOrganizationLedgerDashboardSummaryRoute,
   getLedgerSettlementDefaultsRoute,
+  getLedgerSettlementDisbursementWorkspaceRoute,
   getLedgerSettlementWorkspaceRoute,
+  listLedgerClaimableRecipientSummariesRoute,
   listLedgerEventSummariesRoute,
   listLedgerClaimableRecipientsRoute,
+  listLedgerDisburseableEventSummariesRoute,
   listLedgerEventsRoute,
   listLedgerSettlementsRoute,
   queryCharacterLedgerDashboardSummariesRoute,
@@ -734,8 +741,28 @@ organizationLedgerRouter.use(
   requireLedgerMember,
 );
 organizationLedgerRouter.use(
+  "/:organization/ledger/claimable-recipients/*",
+  requireLedgerMember,
+);
+organizationLedgerRouter.use(
   "/:organization/ledger/claimable-recipients/:characterId",
   requireLedgerMember,
+);
+organizationLedgerRouter.use(
+  "/:organization/ledger/claimable-recipients/:characterId/disburse",
+  requireLedgerManager,
+);
+organizationLedgerRouter.use(
+  "/:organization/ledger/disburseable-events/summary",
+  requireLedgerMember,
+);
+organizationLedgerRouter.use(
+  "/:organization/ledger/settlements/:settlementId/disbursement-workspace",
+  requireLedgerMember,
+);
+organizationLedgerRouter.use(
+  "/:organization/ledger/settlements/:settlementId/claims",
+  requireLedgerManager,
 );
 organizationLedgerRouter.use(
   "/:organization/ledger/claims",
@@ -1181,6 +1208,107 @@ organizationLedgerRouter.openapi(listLedgerClaimableRecipientsRoute, async (c) =
   }
 });
 
+organizationLedgerRouter.openapi(listLedgerClaimableRecipientSummariesRoute, async (c) => {
+  const parsed = listLedgerClaimableRecipientSummariesRoute.request.query.safeParse(
+    c.req.query(),
+  );
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c), "query"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const result = await new ClaimWorkspaceQueryService(
+      new D1Client(c.env.APP_DB),
+    ).listClaimableRecipientSummaries({
+      gameId: parsed.data.gameId,
+      limit: parsed.data.limit ?? 20,
+      offset: parsed.data.offset ?? 0,
+      organizationId: organization.id,
+      q: parsed.data.q,
+      sortBy: parsed.data.sortBy,
+      sortOrder: parsed.data.sortOrder,
+    });
+
+    return c.json(result, 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(listLedgerDisburseableEventSummariesRoute, async (c) => {
+  const parsed = listLedgerDisburseableEventSummariesRoute.request.query.safeParse(
+    c.req.query(),
+  );
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c), "query"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const result = await new ClaimWorkspaceQueryService(
+      new D1Client(c.env.APP_DB),
+    ).listDisburseableEventSummaries({
+      fromDecidedAt: parsed.data.fromDecidedAt,
+      gameId: parsed.data.gameId,
+      limit: parsed.data.limit ?? 20,
+      offset: parsed.data.offset ?? 0,
+      organizationId: organization.id,
+      q: parsed.data.q,
+      toDecidedAt: parsed.data.toDecidedAt,
+    });
+
+    return c.json(result, 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(getLedgerClaimableRecipientWorkspaceRoute, async (c) => {
+  const paramsParsed =
+    getLedgerClaimableRecipientWorkspaceRoute.request.params.safeParse(c.req.param());
+  if (!paramsParsed.success) {
+    return c.json(
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const db = new D1Client(c.env.APP_DB);
+    await requireLedgerCharacter(db, paramsParsed.data.characterId, organization.id);
+    const workspace = await new ClaimWorkspaceQueryService(
+      db,
+    ).getClaimableRecipientWorkspace({
+      characterId: paramsParsed.data.characterId,
+      organizationId: organization.id,
+    });
+
+    return c.json(workspace, 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
 organizationLedgerRouter.openapi(getLedgerClaimableRecipientRoute, async (c) => {
   const paramsParsed = getLedgerClaimableRecipientRoute.request.params.safeParse(
     c.req.param(),
@@ -1215,6 +1343,37 @@ organizationLedgerRouter.openapi(getLedgerClaimableRecipientRoute, async (c) => 
     });
 
     return c.json(detail, 200);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(getLedgerSettlementDisbursementWorkspaceRoute, async (c) => {
+  const paramsParsed =
+    getLedgerSettlementDisbursementWorkspaceRoute.request.params.safeParse(c.req.param());
+  if (!paramsParsed.success) {
+    return c.json(
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const db = new D1Client(c.env.APP_DB);
+    await requireLedgerSettlement(db, paramsParsed.data.settlementId, organization.id);
+    const workspace = await new ClaimWorkspaceQueryService(
+      db,
+    ).getSettlementDisbursementWorkspace({
+      organizationId: organization.id,
+      settlementId: paramsParsed.data.settlementId,
+    });
+
+    return c.json(workspace, 200);
   } catch (error) {
     if (error instanceof AppError) {
       return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404);
@@ -1668,6 +1827,120 @@ organizationLedgerRouter.openapi(createLedgerBatchClaimsRoute, async (c) => {
         allocationsProcessed: result.allocationsProcessed,
         claims: result.claims.map(toClaimResponse),
         message: "Batch claims recorded successfully.",
+        settlementsTouched: result.settlementsTouched,
+      },
+      201,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(createLedgerClaimableRecipientDisbursementRoute, async (c) => {
+  const paramsParsed =
+    createLedgerClaimableRecipientDisbursementRoute.request.params.safeParse(
+      c.req.param(),
+    );
+  if (!paramsParsed.success) {
+    return c.json(
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
+      422,
+    );
+  }
+
+  const schema =
+    createLedgerClaimableRecipientDisbursementRoute.request.body.content[
+      "application/json"
+    ].schema;
+  const parsed = schema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const membership = requireLedgerMembership(c);
+    assertLedgerManager(membership);
+
+    const result = await new BatchClaimDispatchService(
+      new D1Client(c.env.APP_DB),
+    ).recordRecipientClaims({
+      characterId: paramsParsed.data.characterId,
+      claimedAt: parsed.data.claimedAt,
+      includeSiblingCharacters: parsed.data.includeSiblingCharacters,
+      items: parsed.data.items,
+      method: parsed.data.method,
+      notes: parsed.data.notes,
+      organizationId: organization.id,
+    });
+
+    return c.json(
+      {
+        allocationsProcessed: result.allocationsProcessed,
+        claims: result.claims.map(toClaimResponse),
+        message: "Recipient claims recorded successfully.",
+        settlementsTouched: result.settlementsTouched,
+      },
+      201,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(buildErrorResponseBody(c, error), error.status as 401 | 403 | 404 | 409);
+    }
+
+    throw error;
+  }
+});
+
+organizationLedgerRouter.openapi(createLedgerSettlementClaimsRoute, async (c) => {
+  const paramsParsed = createLedgerSettlementClaimsRoute.request.params.safeParse(
+    c.req.param(),
+  );
+  if (!paramsParsed.success) {
+    return c.json(
+      validationErrorFromIssues(paramsParsed.error.issues, ensureRequestId(c), "params"),
+      422,
+    );
+  }
+
+  const schema =
+    createLedgerSettlementClaimsRoute.request.body.content["application/json"].schema;
+  const parsed = schema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const organization = requireLedgerOrganization(c);
+    const membership = requireLedgerMembership(c);
+    assertLedgerManager(membership);
+
+    const result = await new BatchClaimDispatchService(
+      new D1Client(c.env.APP_DB),
+    ).recordSettlementClaims({
+      claimedAt: parsed.data.claimedAt,
+      items: parsed.data.items,
+      method: parsed.data.method,
+      notes: parsed.data.notes,
+      organizationId: organization.id,
+      settlementId: paramsParsed.data.settlementId,
+    });
+
+    return c.json(
+      {
+        allocationsProcessed: result.allocationsProcessed,
+        claims: result.claims.map(toClaimResponse),
+        message: "Settlement claims recorded successfully.",
         settlementsTouched: result.settlementsTouched,
       },
       201,
