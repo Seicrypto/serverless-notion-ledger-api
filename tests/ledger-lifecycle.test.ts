@@ -3,8 +3,10 @@ import test from "node:test";
 import type { DatabaseClient } from "../src/infrastructure/database/database-client";
 import { AllocationLifecycleService } from "../src/services/ledger/allocation-lifecycle-service";
 import { ClaimLifecycleService } from "../src/services/ledger/claim-lifecycle-service";
+import { ClaimableRecipientsQueryService } from "../src/services/ledger/claimable-recipients-query-service";
 import { EventLifecycleService } from "../src/services/ledger/event-lifecycle-service";
 import { DashboardQueryService } from "../src/services/ledger/dashboard-query-service";
+import { EventSettlementOrchestrationService } from "../src/services/ledger/event-settlement-orchestration-service";
 import { SettlementDisbursementService } from "../src/services/ledger/settlement-disbursement-service";
 import { SettlementLifecycleService } from "../src/services/ledger/settlement-lifecycle-service";
 import { AppError, ConflictError } from "../src/lib/errors";
@@ -24,6 +26,7 @@ import {
   buildEventDetailResponse,
   buildSettlementWorkspaceResponseData,
   listEventParticipantSummaryMap,
+  mapEventStatusGroup,
 } from "../src/modules/ledger/route";
 import { D1Client } from "../src/infrastructure/d1/d1-client";
 
@@ -182,6 +185,66 @@ test("settlement lifecycle can auto-ready an open event through settleEvent", as
 
     const eventAfterSettlement = await eventService.syncStatusFromSettlements(event.id);
     assert.equal(eventAfterSettlement.status, "partially_settled");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("high-level settle flow creates a calculated settlement with pending allocations", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const dashboardService = new DashboardQueryService(fixture.db);
+    const claimableService = new ClaimableRecipientsQueryService(fixture.db);
+
+    const event = await eventService.createEvent({
+      occurredAt: "2026-08-26T12:30:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "High Level Settle Event",
+    });
+    await addEventParticipants(fixture.db, event.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+
+    const result = await new EventSettlementOrchestrationService(
+      fixture.db,
+    ).settleEventWithAllocations({
+      allocationMode: "equal",
+      decidedAt: "2026-08-26T13:30:00.000Z",
+      eventId: event.id,
+      grossAmount: 2000,
+      netAmount: 2000,
+      organizationId: fixture.organization.id,
+      recipients: [
+        { characterId: fixture.characterOne.id },
+        { characterId: fixture.characterTwo.id },
+      ],
+      title: "High Level Settle Settlement",
+    });
+
+    assert.equal(result.settlement.status, "calculated");
+    assert.equal(result.allocations.length, 2);
+    assert.equal(result.allocations[0]?.amount, 1000);
+    assert.equal(result.allocations[1]?.amount, 1000);
+    assert.equal(result.event.status, "partially_settled");
+
+    const summary = await dashboardService.getOrganizationSummary({
+      organization: {
+        id: fixture.organization.id,
+        name: fixture.organization.name,
+        vanity: fixture.organization.vanity,
+      },
+    });
+    assert.equal(summary.summary.unsettledEventCount, 0);
+    assert.equal(summary.summary.disbursementNotStartedCount, 1);
+
+    const claimableRecipients = await claimableService.listClaimableRecipients(
+      fixture.organization.id,
+    );
+    assert.equal(claimableRecipients.length, 2);
+    assert.equal(claimableRecipients[0]?.pendingClaimAmountTotal, 1000);
+    assert.equal(claimableRecipients[1]?.pendingClaimAmountTotal, 1000);
   } finally {
     await fixture.cleanup();
   }
@@ -726,13 +789,20 @@ test("dashboard summary counts unsettled events and disbursement states", async 
     });
 
     assert.equal(summary.summary.settlementCount, 2);
-    assert.equal(summary.summary.unsettledEventCount, 2);
+    assert.equal(summary.summary.unsettledEventCount, 1);
     assert.equal(summary.summary.disbursementInProgressCount, 1);
     assert.equal(summary.summary.disbursementNotStartedCount, 1);
     assert.equal(summary.summary.revenueUnitBreakdown.length, 2);
   } finally {
     await fixture.cleanup();
   }
+});
+
+test("event status groups treat partially settled events as settled in user-facing lists", () => {
+  assert.deepEqual(mapEventStatusGroup("unsettled"), ["open", "ready_for_settlement"]);
+  assert.deepEqual(mapEventStatusGroup("settleable"), ["open", "ready_for_settlement"]);
+  assert.deepEqual(mapEventStatusGroup("settled"), ["partially_settled", "settled"]);
+  assert.deepEqual(mapEventStatusGroup("cancelled"), ["cancelled"]);
 });
 
 test("dashboard character summary and detail expose receivable and payable views", async () => {

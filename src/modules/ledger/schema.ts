@@ -339,8 +339,29 @@ const createSettlementRequestSchema = z
   })
   .openapi("CreateLedgerSettlementRequest");
 
+const settlementRecipientRequestSchema = z
+  .object({
+    amount: z.number().nonnegative().optional(),
+    characterId: z.number().int().positive(),
+    ratio: z.number().nonnegative().nullable().optional(),
+    weight: z.number().positive().optional(),
+  })
+  .openapi("LedgerSettlementRecipientRequest");
+
 const settleEventRequestSchema = createSettlementRequestSchema
   .omit({ eventId: true })
+  .extend({
+    recipients: z.array(settlementRecipientRequestSchema).min(1).max(200).optional(),
+  })
+  .refine(
+    (value) =>
+      (value.recipients?.length ?? 0) > 0 ||
+      (value.recipientCharacterIds?.length ?? 0) > 0,
+    {
+      message: "At least one settlement recipient must be provided",
+      path: ["recipients"],
+    },
+  )
   .openapi("SettleLedgerEventRequest");
 
 const updateSettlementRequestSchema = z
@@ -421,6 +442,16 @@ const settlementResponseSchema = z
     participantValidation: settlementParticipantValidationSchema.nullable(),
   })
   .openapi("LedgerSettlementResponse");
+
+const settleEventResponseSchema = z
+  .object({
+    allocations: z.array(allocationSchema),
+    event: eventDetailSchema,
+    message: z.string(),
+    participantValidation: settlementParticipantValidationSchema.nullable(),
+    settlement: settlementSchema,
+  })
+  .openapi("LedgerSettledEventResponse");
 
 const allocationResponseSchema = z
   .object({
@@ -1098,8 +1129,9 @@ export const settleLedgerEventRoute = createRoute({
   },
   responses: {
     201: {
-      content: { "application/json": { schema: settlementResponseSchema } },
-      description: "Auto-ready an event when needed and create a draft settlement from it.",
+      content: { "application/json": { schema: settleEventResponseSchema } },
+      description:
+        "Auto-ready an event when needed, create a calculated settlement, and allocate it to recipients.",
     },
     401: { content: { "application/json": { schema: errorSchema } }, description: "Authentication required." },
     403: { content: { "application/json": { schema: errorSchema } }, description: "Organization manager access required." },

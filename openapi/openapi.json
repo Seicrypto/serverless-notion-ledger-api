@@ -5923,6 +5923,36 @@
           "title"
         ]
       },
+      "LedgerSettledEventResponse": {
+        "type": "object",
+        "properties": {
+          "allocations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerSettlementAllocation"
+            }
+          },
+          "event": {
+            "$ref": "#/components/schemas/LedgerEventDetail"
+          },
+          "message": {
+            "type": "string"
+          },
+          "participantValidation": {
+            "$ref": "#/components/schemas/LedgerSettlementParticipantValidation"
+          },
+          "settlement": {
+            "$ref": "#/components/schemas/LedgerSettlement"
+          }
+        },
+        "required": [
+          "allocations",
+          "event",
+          "message",
+          "participantValidation",
+          "settlement"
+        ]
+      },
       "SettleLedgerEventRequest": {
         "type": "object",
         "properties": {
@@ -6037,6 +6067,14 @@
               "null"
             ],
             "exclusiveMinimum": 0
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerSettlementRecipientRequest"
+            },
+            "minItems": 1,
+            "maxItems": 200
           }
         },
         "required": [
@@ -6044,6 +6082,33 @@
           "grossAmount",
           "netAmount",
           "title"
+        ]
+      },
+      "LedgerSettlementRecipientRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "characterId": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "weight": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "characterId"
         ]
       },
       "UpdateLedgerSettlementStatusRequest": {
@@ -13068,11 +13133,11 @@
         },
         "responses": {
           "201": {
-            "description": "Auto-ready an event when needed and create a draft settlement from it.",
+            "description": "Auto-ready an event when needed, create a calculated settlement, and allocate it to recipients.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LedgerSettlementResponse"
+                  "$ref": "#/components/schemas/LedgerSettledEventResponse"
                 }
               }
             }
