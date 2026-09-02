@@ -446,6 +446,13 @@ const organizationIdentifierMemberIdParamSchema = z
   })
   .openapi("OrganizationIdentifierMemberIdParam");
 
+const organizationClaimRequestIdParamSchema = z
+  .object({
+    organization: z.string().trim().min(1).max(120),
+    requestId: z.coerce.number().int().positive(),
+  })
+  .openapi("OrganizationClaimRequestIdParam");
+
 const deleteOrganizationResponseSchema = z
   .object({
     message: z.string(),
@@ -541,6 +548,17 @@ const claimRequestSchema = z
     },
   )
   .openapi("OrganizationCharacterClaimRequest");
+
+const assignCharacterRequestSchema = z
+  .object({
+    memberId: z.number().int().positive().optional(),
+    userId: z.number().int().positive().optional(),
+  })
+  .refine((value) => value.userId !== undefined || value.memberId !== undefined, {
+    message: "Provide either userId or memberId",
+    path: ["userId"],
+  })
+  .openapi("AssignOrganizationCharacterRequest");
 
 const characterClaimRequestSchema = z
   .object({
@@ -1031,6 +1049,53 @@ export const createOrganizationCharacterClaimRequestRoute = createRoute({
   },
 });
 
+export const assignOrganizationCharacterRoute = createRoute({
+  method: "post",
+  path: "/{organization}/characters/{characterId}/assign",
+  tags: ["Organizations"],
+  request: {
+    params: organizationCharacterParamSchema,
+    body: {
+      content: {
+        "application/json": {
+          schema: assignCharacterRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: characterClaimResponseSchema,
+        },
+      },
+      description: "Character assigned successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization, character, member, or user not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Character assignment conflicts with current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
 export const unclaimOrganizationCharacterRoute = createRoute({
   method: "post",
   path: "/{organization}/characters/{characterId}/unclaim",
@@ -1062,6 +1127,45 @@ export const unclaimOrganizationCharacterRoute = createRoute({
     409: {
       content: { "application/json": { schema: errorSchema } },
       description: "Character cannot be unclaimed in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const unassignOrganizationCharacterRoute = createRoute({
+  method: "post",
+  path: "/{organization}/characters/{characterId}/unassign",
+  tags: ["Organizations"],
+  request: {
+    params: organizationCharacterParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: characterClaimResponseSchema,
+        },
+      },
+      description: "Character unassigned successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or character not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Character cannot be unassigned in its current state.",
     },
     422: {
       content: { "application/json": { schema: validationErrorSchema } },
@@ -1710,6 +1814,123 @@ export const rejectOrganizationMemberRoute = createRoute({
   },
 });
 
+export const cancelOrganizationMemberRoute = createRoute({
+  method: "post",
+  path: "/{organization}/members/{memberId}/cancel",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierMemberIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationMemberResponseSchema,
+        },
+      },
+      description: "Pending membership cancelled successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User is not allowed to cancel this pending membership.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or membership not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Pending membership cannot be cancelled in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const leaveOrganizationMemberRoute = createRoute({
+  method: "post",
+  path: "/{organization}/members/{memberId}/leave",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierMemberIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationMemberResponseSchema,
+        },
+      },
+      description: "Member left the organization successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User is not allowed to leave for another member.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or membership not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Membership cannot leave in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const removeOrganizationMemberRoute = createRoute({
+  method: "post",
+  path: "/{organization}/members/{memberId}/remove",
+  tags: ["Organizations"],
+  request: {
+    params: organizationIdentifierMemberIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: organizationMemberResponseSchema,
+        },
+      },
+      description: "Member removed successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization manager access required.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or membership not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Membership cannot be removed in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
 export const appointOrganizationAdminRoute = createRoute({
   method: "post",
   path: "/{organization}/members/{memberId}/appoint-admin",
@@ -1858,6 +2079,123 @@ export const declineOrganizationInviteRoute = createRoute({
     409: {
       content: { "application/json": { schema: errorSchema } },
       description: "Invitation cannot be declined in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const acceptOrganizationCharacterClaimRequestRoute = createRoute({
+  method: "post",
+  path: "/{organization}/character-claim-requests/{requestId}/accept",
+  tags: ["Organizations"],
+  request: {
+    params: organizationClaimRequestIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: characterClaimResponseSchema,
+        },
+      },
+      description: "Character claim request accepted successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User is not allowed to accept this claim request.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or claim request not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Claim request cannot be accepted in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const declineOrganizationCharacterClaimRequestRoute = createRoute({
+  method: "post",
+  path: "/{organization}/character-claim-requests/{requestId}/decline",
+  tags: ["Organizations"],
+  request: {
+    params: organizationClaimRequestIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: characterClaimResponseSchema,
+        },
+      },
+      description: "Character claim request declined successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User is not allowed to decline this claim request.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or claim request not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Claim request cannot be declined in its current state.",
+    },
+    422: {
+      content: { "application/json": { schema: validationErrorSchema } },
+      description: "Validation failed.",
+    },
+  },
+});
+
+export const cancelOrganizationCharacterClaimRequestRoute = createRoute({
+  method: "post",
+  path: "/{organization}/character-claim-requests/{requestId}/cancel",
+  tags: ["Organizations"],
+  request: {
+    params: organizationClaimRequestIdParamSchema,
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: characterClaimResponseSchema,
+        },
+      },
+      description: "Character claim request cancelled successfully.",
+    },
+    401: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Authentication required.",
+    },
+    403: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "User is not allowed to cancel this claim request.",
+    },
+    404: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Organization or claim request not found.",
+    },
+    409: {
+      content: { "application/json": { schema: errorSchema } },
+      description: "Claim request cannot be cancelled in its current state.",
     },
     422: {
       content: { "application/json": { schema: validationErrorSchema } },
