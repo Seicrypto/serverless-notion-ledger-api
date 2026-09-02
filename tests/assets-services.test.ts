@@ -132,6 +132,46 @@ test("mounted organization ledger router applies middleware before event handler
   assert.equal(body.organizationId, 3);
 });
 
+test("mounted organization ledger router applies settlement middleware before workspace handler", async () => {
+  const root = new Hono<{
+    Variables: {
+      organization: { id: number };
+      organizationMembership: { role: "member"; status: "active" };
+      session: { user: { id: number } };
+    };
+  }>();
+  const child = new Hono<{
+    Variables: {
+      organization: { id: number };
+      organizationMembership: { role: "member"; status: "active" };
+      session: { user: { id: number } };
+    };
+  }>();
+
+  child.use("/:organization/ledger/settlements/*", async (c, next) => {
+    c.set("organization", { id: Number(c.req.param("organization")) });
+    c.set("organizationMembership", { role: "member", status: "active" });
+    c.set("session", { user: { id: 1 } });
+    await next();
+  });
+  child.get("/:organization/ledger/settlements/workspace", (c) => {
+    const organization = c.get("organization");
+    return c.json({ organizationId: organization.id });
+  });
+  root.route("/organizations", child);
+
+  const response = await root.request(
+    "/organizations/3/ledger/settlements/workspace?eventId=2",
+    {
+      method: "GET",
+    },
+  );
+  const body = (await response.json()) as { organizationId: number };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.organizationId, 3);
+});
+
 test("asset duplicate detection returns exact canonical matches", async () => {
   const { cleanup, db } = await createTestDatabase();
   try {
