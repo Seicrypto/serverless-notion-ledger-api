@@ -1,5 +1,6 @@
 import type { DatabaseClient } from "../../infrastructure/database/database-client";
-import { ConflictError } from "../../lib/errors";
+import { AppError, ConflictError, NotFoundError } from "../../lib/errors";
+import { CharactersRepository } from "../../repositories/characters-repository";
 import { SettlementsRepository } from "../../repositories/settlements-repository";
 import type { SettlementAllocationRecord, SettlementRecord } from "../../repositories/types";
 import { AllocationLifecycleService } from "./allocation-lifecycle-service";
@@ -65,6 +66,7 @@ export class EventSettlementOrchestrationService {
     }
 
     const recipients = this.prepareRecipients(input);
+    await this.assertRecipientsExist(recipients, input.organizationId);
 
     let workingSettlement: SettlementRecord | null = null;
 
@@ -96,10 +98,21 @@ export class EventSettlementOrchestrationService {
       };
     } catch (error) {
       if (workingSettlement) {
-        await this.rollbackSettlementFailure({
+        const rollbackSucceeded = await this.rollbackSettlementFailure({
           eventId: event.id,
           settlement: workingSettlement,
         });
+
+        if (rollbackSucceeded && (!(error instanceof AppError) || error.status >= 500)) {
+          throw new AppError(
+            "Settlement creation failed and was rolled back. It is safe to retry.",
+            503,
+            {
+              code: "SETTLEMENT_ROLLED_BACK_RETRYABLE",
+              expose: true,
+            },
+          );
+        }
       }
 
       throw error;
@@ -110,10 +123,12 @@ export class EventSettlementOrchestrationService {
     eventId: number;
     settlement: SettlementRecord;
   }) {
+    let rollbackSucceeded = false;
     try {
       await new SettlementLifecycleService(this.db).cancelSettlement(
         input.settlement.id,
       );
+      rollbackSucceeded = true;
     } catch {
       // Best-effort compensation keeps the original database error as the primary failure.
     }
@@ -122,6 +137,22 @@ export class EventSettlementOrchestrationService {
       await new EventLifecycleService(this.db).syncStatusFromSettlements(input.eventId);
     } catch {
       // Best-effort compensation keeps the original database error as the primary failure.
+    }
+
+    return rollbackSucceeded;
+  }
+
+  private async assertRecipientsExist(
+    recipients: PreparedRecipient[],
+    organizationId: number,
+  ) {
+    const characters = new CharactersRepository(this.db);
+
+    for (const recipient of recipients) {
+      const character = await characters.findById(recipient.characterId);
+      if (!character || character.organization_id !== organizationId) {
+        throw new NotFoundError("Recipient character not found");
+      }
     }
   }
 

@@ -659,8 +659,8 @@ test("high-level settle compensates partial failures so events remain retryable"
           title: "Rollback Settlement",
         }),
       (error: unknown) =>
-        error instanceof Error &&
-        error.message.includes("D1_ERROR: simulated allocation insert failure"),
+        error instanceof AppError &&
+        error.code === "SETTLEMENT_ROLLED_BACK_RETRYABLE",
     );
 
     const settlements = await new SettlementsRepository(fixture.db).listByEvent(event.id);
