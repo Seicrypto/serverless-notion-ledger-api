@@ -159,6 +159,8 @@ export class EventSettlementOrchestrationService {
   private prepareRecipients(
     input: SettleEventWithAllocationsInput,
   ): PreparedRecipient[] {
+    this.assertIntegerAmount(input.netAmount, "SETTLEMENT_NET_AMOUNT_INVALID");
+
     const mode = input.allocationMode ?? "equal";
     const rawRecipients = this.normalizeRecipients(input);
 
@@ -189,6 +191,13 @@ export class EventSettlementOrchestrationService {
         ratio: recipient.ratio ?? null,
         weight: recipient.weight ?? 1,
       }));
+
+      for (const allocation of allocations) {
+        this.assertIntegerAmount(
+          allocation.amount,
+          "SETTLEMENT_RECIPIENT_AMOUNT_INVALID",
+        );
+      }
 
       this.assertAllocationTotalMatchesNetAmount(
         allocations.map((recipient) => recipient.amount),
@@ -231,13 +240,12 @@ export class EventSettlementOrchestrationService {
     totalAmount: number,
   ): PreparedRecipient[] {
     const ratio = recipients.length === 0 ? 0 : 1 / recipients.length;
-    const baseAmount = recipients.length === 0 ? 0 : totalAmount / recipients.length;
+    const integralTotalAmount = this.toIntegerAmount(totalAmount);
+    const baseAmount =
+      recipients.length === 0 ? 0 : Math.floor(integralTotalAmount / recipients.length);
 
     return recipients.map((recipient, index) => ({
-      amount:
-        index === recipients.length - 1
-          ? totalAmount - baseAmount * (recipients.length - 1)
-          : baseAmount,
+      amount: baseAmount,
       characterId: recipient.characterId,
       ratio: recipient.ratio ?? ratio,
       weight: recipient.weight ?? 1,
@@ -249,6 +257,7 @@ export class EventSettlementOrchestrationService {
     totalAmount: number,
   ): PreparedRecipient[] {
     const weights = recipients.map((recipient) => recipient.weight ?? 1);
+    const integralTotalAmount = this.toIntegerAmount(totalAmount);
     const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
     if (totalWeight <= 0) {
       throw new ConflictError("Weighted settlement allocation requires positive weights", {
@@ -256,22 +265,32 @@ export class EventSettlementOrchestrationService {
       });
     }
 
-    let distributed = 0;
+    const bases = weights.map((weight) =>
+      Math.floor((integralTotalAmount * weight) / totalWeight),
+    );
+
     return recipients.map((recipient, index) => {
       const weight = recipient.weight ?? 1;
-      const amount =
-        index === recipients.length - 1
-          ? totalAmount - distributed
-          : (totalAmount * weight) / totalWeight;
-      distributed += amount;
-
       return {
-        amount,
+        amount: bases[index]!,
         characterId: recipient.characterId,
         ratio: recipient.ratio ?? weight / totalWeight,
         weight,
       };
     });
+  }
+
+  private assertIntegerAmount(amount: number, code: string) {
+    if (!Number.isInteger(amount)) {
+      throw new ConflictError("Settlement amounts must be whole-number integers", {
+        code,
+      });
+    }
+  }
+
+  private toIntegerAmount(amount: number) {
+    this.assertIntegerAmount(amount, "SETTLEMENT_NET_AMOUNT_INVALID");
+    return amount;
   }
 
   private assertAllocationTotalMatchesNetAmount(

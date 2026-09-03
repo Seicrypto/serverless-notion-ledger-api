@@ -254,6 +254,62 @@ test("high-level settle flow creates a calculated settlement with pending alloca
   }
 });
 
+test("high-level settle equal allocation floors remainder without overpaying recipients", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const event = await eventService.createEvent({
+      eventKey: "evt-equal-integer-split-1",
+      occurredAt: "2026-09-03T06:40:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Equal Integer Split Event",
+    });
+
+    const charactersRepository = new CharactersRepository(fixture.db);
+    const extraCharacters = [];
+    for (const name of ["Gamma", "Delta", "Epsilon", "Zeta"]) {
+      extraCharacters.push(
+        await charactersRepository.create({
+          gameId: fixture.game.id,
+          name,
+          organizationId: fixture.organization.id,
+        }),
+      );
+    }
+    const recipientIds = [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+      ...extraCharacters.map((character) => character.id),
+    ];
+    await addEventParticipants(fixture.db, event.id, recipientIds);
+
+    const result = await new EventSettlementOrchestrationService(
+      fixture.db,
+    ).settleEventWithAllocations({
+      allocationMode: "equal",
+      decidedAt: "2026-09-03T06:51:00.000Z",
+      eventId: event.id,
+      grossAmount: 2000000,
+      netAmount: 1700000,
+      organizationId: fixture.organization.id,
+      recipientCharacterIds: recipientIds,
+      title: "Equal Integer Split Settlement",
+    });
+
+    assert.equal(result.allocations.length, 6);
+    assert.equal(
+      result.allocations.reduce((sum, allocation) => sum + allocation.amount, 0),
+      1699998,
+    );
+    assert.deepEqual(
+      result.allocations.map((allocation) => allocation.amount).sort((a, b) => a - b),
+      [283333, 283333, 283333, 283333, 283333, 283333],
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("claim workspace queries provide paged summaries and bootstrap workspaces", async () => {
   const fixture = await createLedgerFixture();
   try {
