@@ -1,5 +1,6 @@
 import type { DatabaseClient } from "../../infrastructure/database/database-client";
-import { ConflictError } from "../../lib/errors";
+import { AppError, ConflictError, NotFoundError } from "../../lib/errors";
+import { CharactersRepository } from "../../repositories/characters-repository";
 import { SettlementsRepository } from "../../repositories/settlements-repository";
 import type { SettlementAllocationRecord, SettlementRecord } from "../../repositories/types";
 import { AllocationLifecycleService } from "./allocation-lifecycle-service";
@@ -65,6 +66,7 @@ export class EventSettlementOrchestrationService {
     }
 
     const recipients = this.prepareRecipients(input);
+    await this.assertRecipientsExist(recipients, input.organizationId);
 
     let workingSettlement: SettlementRecord | null = null;
 
@@ -96,10 +98,21 @@ export class EventSettlementOrchestrationService {
       };
     } catch (error) {
       if (workingSettlement) {
-        await this.rollbackSettlementFailure({
+        const rollbackSucceeded = await this.rollbackSettlementFailure({
           eventId: event.id,
           settlement: workingSettlement,
         });
+
+        if (rollbackSucceeded && (!(error instanceof AppError) || error.status >= 500)) {
+          throw new AppError(
+            "Settlement creation failed and was rolled back. It is safe to retry.",
+            503,
+            {
+              code: "SETTLEMENT_ROLLED_BACK_RETRYABLE",
+              expose: true,
+            },
+          );
+        }
       }
 
       throw error;
@@ -110,10 +123,12 @@ export class EventSettlementOrchestrationService {
     eventId: number;
     settlement: SettlementRecord;
   }) {
+    let rollbackSucceeded = false;
     try {
       await new SettlementLifecycleService(this.db).cancelSettlement(
         input.settlement.id,
       );
+      rollbackSucceeded = true;
     } catch {
       // Best-effort compensation keeps the original database error as the primary failure.
     }
@@ -123,11 +138,29 @@ export class EventSettlementOrchestrationService {
     } catch {
       // Best-effort compensation keeps the original database error as the primary failure.
     }
+
+    return rollbackSucceeded;
+  }
+
+  private async assertRecipientsExist(
+    recipients: PreparedRecipient[],
+    organizationId: number,
+  ) {
+    const characters = new CharactersRepository(this.db);
+
+    for (const recipient of recipients) {
+      const character = await characters.findById(recipient.characterId);
+      if (!character || character.organization_id !== organizationId) {
+        throw new NotFoundError("Recipient character not found");
+      }
+    }
   }
 
   private prepareRecipients(
     input: SettleEventWithAllocationsInput,
   ): PreparedRecipient[] {
+    this.assertIntegerAmount(input.netAmount, "SETTLEMENT_NET_AMOUNT_INVALID");
+
     const mode = input.allocationMode ?? "equal";
     const rawRecipients = this.normalizeRecipients(input);
 
@@ -158,6 +191,13 @@ export class EventSettlementOrchestrationService {
         ratio: recipient.ratio ?? null,
         weight: recipient.weight ?? 1,
       }));
+
+      for (const allocation of allocations) {
+        this.assertIntegerAmount(
+          allocation.amount,
+          "SETTLEMENT_RECIPIENT_AMOUNT_INVALID",
+        );
+      }
 
       this.assertAllocationTotalMatchesNetAmount(
         allocations.map((recipient) => recipient.amount),
@@ -200,13 +240,12 @@ export class EventSettlementOrchestrationService {
     totalAmount: number,
   ): PreparedRecipient[] {
     const ratio = recipients.length === 0 ? 0 : 1 / recipients.length;
-    const baseAmount = recipients.length === 0 ? 0 : totalAmount / recipients.length;
+    const integralTotalAmount = this.toIntegerAmount(totalAmount);
+    const baseAmount =
+      recipients.length === 0 ? 0 : Math.floor(integralTotalAmount / recipients.length);
 
     return recipients.map((recipient, index) => ({
-      amount:
-        index === recipients.length - 1
-          ? totalAmount - baseAmount * (recipients.length - 1)
-          : baseAmount,
+      amount: baseAmount,
       characterId: recipient.characterId,
       ratio: recipient.ratio ?? ratio,
       weight: recipient.weight ?? 1,
@@ -218,6 +257,7 @@ export class EventSettlementOrchestrationService {
     totalAmount: number,
   ): PreparedRecipient[] {
     const weights = recipients.map((recipient) => recipient.weight ?? 1);
+    const integralTotalAmount = this.toIntegerAmount(totalAmount);
     const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
     if (totalWeight <= 0) {
       throw new ConflictError("Weighted settlement allocation requires positive weights", {
@@ -225,22 +265,32 @@ export class EventSettlementOrchestrationService {
       });
     }
 
-    let distributed = 0;
+    const bases = weights.map((weight) =>
+      Math.floor((integralTotalAmount * weight) / totalWeight),
+    );
+
     return recipients.map((recipient, index) => {
       const weight = recipient.weight ?? 1;
-      const amount =
-        index === recipients.length - 1
-          ? totalAmount - distributed
-          : (totalAmount * weight) / totalWeight;
-      distributed += amount;
-
       return {
-        amount,
+        amount: bases[index]!,
         characterId: recipient.characterId,
         ratio: recipient.ratio ?? weight / totalWeight,
         weight,
       };
     });
+  }
+
+  private assertIntegerAmount(amount: number, code: string) {
+    if (!Number.isInteger(amount)) {
+      throw new ConflictError("Settlement amounts must be whole-number integers", {
+        code,
+      });
+    }
+  }
+
+  private toIntegerAmount(amount: number) {
+    this.assertIntegerAmount(amount, "SETTLEMENT_NET_AMOUNT_INVALID");
+    return amount;
   }
 
   private assertAllocationTotalMatchesNetAmount(
