@@ -20,20 +20,27 @@ import { GamesRepository } from "../../repositories/games-repository";
 import { OrganizationMemberPendingActionsRepository } from "../../repositories/organization-member-pending-actions-repository";
 import { OrganizationGamesRepository } from "../../repositories/organization-games-repository";
 import { SessionAuthService } from "../../services/auth/session-auth-service";
+import { OrganizationCharacterClaimWorkflowService } from "../../services/organizations/organization-character-claim-workflow-service";
+import { OrganizationMembershipWorkflowService } from "../../services/organizations/organization-membership-workflow-service";
 import { OrganizationMembersRepository } from "../../repositories/organization-members-repository";
 import { OrganizationsRepository } from "../../repositories/organizations-repository";
 import { UsersRepository } from "../../repositories/users-repository";
 import type { AppBindings } from "../../types/hono";
 import {
+  requireTargetOrganizationMember,
   requireTargetOrganizationManager,
   requireTargetOrganizationOwner,
 } from "./middleware";
 import {
   addOrganizationMemberRoute,
   acceptOrganizationInviteRoute,
+  acceptOrganizationCharacterClaimRequestRoute,
   applyOrganizationMemberRoute,
+  assignOrganizationCharacterRoute,
   appointOrganizationAdminRoute,
   approveOrganizationMemberRoute,
+  cancelOrganizationCharacterClaimRequestRoute,
+  cancelOrganizationMemberRoute,
   claimOrganizationCharacterRoute,
   createOrganizationRoute,
   createOrganizationCharacterRoute,
@@ -44,8 +51,10 @@ import {
   deleteOrganizationCharacterRoute,
   deleteOrganizationRoute,
   deleteOrganizationGameRoute,
+  declineOrganizationCharacterClaimRequestRoute,
   declineOrganizationInviteRoute,
   inviteOrganizationMemberRoute,
+  leaveOrganizationMemberRoute,
   listGamesRoute,
   listOrganizationsRoute,
   myOrganizationsRoute,
@@ -58,10 +67,12 @@ import {
   organizationMembersRoute,
   organizationPendingMembersRoute,
   removeOrganizationAdminRoute,
+  removeOrganizationMemberRoute,
   rejectOrganizationMemberRoute,
   searchOrganizationCharactersRoute,
   setPrimaryOrganizationGameRoute,
   unclaimOrganizationCharacterRoute,
+  unassignOrganizationCharacterRoute,
   updateOrganizationCharacterRoute,
   updateOrganizationGameRoute,
   updateOrganizationRoute,
@@ -86,6 +97,14 @@ organizationsRouter.use(
   requireTargetOrganizationManager,
 );
 organizationsRouter.use(
+  "/:organization/members/:memberId/remove",
+  requireTargetOrganizationManager,
+);
+organizationsRouter.use(
+  "/:organization/members/:memberId/leave",
+  requireTargetOrganizationMember,
+);
+organizationsRouter.use(
   "/:organization/members/:memberId/appoint-admin",
   requireTargetOrganizationOwner,
 );
@@ -95,6 +114,14 @@ organizationsRouter.use(
 );
 organizationsRouter.use(
   "/:organization/games",
+  requireTargetOrganizationManager,
+);
+organizationsRouter.use(
+  "/:organization/characters/:characterId/assign",
+  requireTargetOrganizationManager,
+);
+organizationsRouter.use(
+  "/:organization/characters/:characterId/unassign",
   requireTargetOrganizationManager,
 );
 
@@ -275,6 +302,10 @@ function toOrganizationGameSummary(game: OrganizationGameRow) {
   };
 }
 
+function currentIsoTimestamp(): string {
+  return new Date().toISOString();
+}
+
 function toCharacterClaimRequestResponse(
   request: Awaited<ReturnType<CharacterClaimRequestsRepository["create"]>>,
 ) {
@@ -420,7 +451,7 @@ async function setOrganizationPrimaryGame(
          updated_at = ?
      WHERE organization_id = ?`,
     gameId,
-    new Date().toISOString(),
+    currentIsoTimestamp(),
     organizationId,
   );
 }
@@ -529,7 +560,7 @@ async function cancelPendingCharacterClaimRequests(
      WHERE organization_id = ?
        AND character_id = ?
        AND status = 'pending_confirmation'`,
-    new Date().toISOString(),
+    currentIsoTimestamp(),
     organizationId,
     characterId,
   );
@@ -1234,6 +1265,7 @@ organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
       organizations,
       parsed.data.organization,
     );
+    const now = currentIsoTimestamp();
 
     return c.json(
       {
@@ -1256,6 +1288,7 @@ organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
             organization_id: number;
             organization_game_display_name: string | null;
             organization_game_is_primary: number | null;
+            pending_draft_id: number | null;
             slug: string | null;
             source: "internal" | "steam" | null;
             source_id: string | null;
@@ -1272,17 +1305,26 @@ organizationsRouter.openapi(organizationCharactersRoute, async (c) => {
                g.icon_url,
                g.metadata_source,
                g.official_site_url,
+               p.id AS pending_draft_id,
                g.source,
                g.source_id,
                g.type
              FROM characters c
+             LEFT JOIN organization_member_pending_actions p
+               ON p.character_id = c.id
+              AND (p.expires_at IS NULL OR p.expires_at > ?)
              LEFT JOIN organization_games og
                ON og.organization_id = c.organization_id
               AND og.game_id = c.game_id
              LEFT JOIN games g ON g.id = c.game_id
              WHERE c.organization_id = ?
                AND c.deleted_at IS NULL
+               AND NOT (
+                 p.id IS NOT NULL
+                 AND p.requested_character_name IS NOT NULL
+               )
              ORDER BY c.id ASC`,
+            now,
             organization.id,
           )
         ).map((character) => ({
@@ -1346,17 +1388,15 @@ organizationsRouter.openapi(searchOrganizationCharactersRoute, async (c) => {
       organizations,
       params.data.organization,
     );
+    const now = currentIsoTimestamp();
     const limit = query.data.limit ?? 20;
     const offset = query.data.offset ?? 0;
-    const bindings: unknown[] = [organization.id, `%${query.data.q}%`];
     const activeClause =
       query.data.isActive === undefined
         ? ""
         : query.data.isActive === "true"
           ? "AND c.is_active = 1"
           : "AND c.is_active = 0";
-
-    bindings.push(limit + 1, offset);
 
     const rows = await db.all<{
       claimed_by_user_id: number | null;
@@ -1373,6 +1413,7 @@ organizationsRouter.openapi(searchOrganizationCharactersRoute, async (c) => {
       name: string;
       notes: string | null;
       official_site_url: string | null;
+      pending_draft_id: number | null;
       organization_game_display_name: string | null;
       organization_game_is_primary: number | null;
       organization_game_sort_order: number | null;
@@ -1389,6 +1430,7 @@ organizationsRouter.openapi(searchOrganizationCharactersRoute, async (c) => {
          og.display_name AS organization_game_display_name,
          og.is_primary AS organization_game_is_primary,
          og.sort_order AS organization_game_sort_order,
+         p.id AS pending_draft_id,
          g.name AS game_name,
          g.slug AS game_slug,
          g.icon_url,
@@ -1398,17 +1440,25 @@ organizationsRouter.openapi(searchOrganizationCharactersRoute, async (c) => {
          g.source_id,
          g.type
        FROM characters c
+       LEFT JOIN organization_member_pending_actions p
+         ON p.character_id = c.id
+        AND (p.expires_at IS NULL OR p.expires_at > ?)
        LEFT JOIN organization_games og
          ON og.organization_id = c.organization_id
         AND og.game_id = c.game_id
        LEFT JOIN games g ON g.id = c.game_id
        WHERE c.organization_id = ?
          AND c.deleted_at IS NULL
+         AND NOT (
+           p.id IS NOT NULL
+           AND p.requested_character_name IS NOT NULL
+         )
          AND (c.name LIKE ? OR c.slug LIKE ? OR c.notes LIKE ?)
          ${activeClause}
        ORDER BY c.id ASC
        LIMIT ?
        OFFSET ?`,
+      now,
       organization.id,
       `%${query.data.q}%`,
       `%${query.data.q}%`,
@@ -1646,18 +1696,12 @@ organizationsRouter.openapi(claimOrganizationCharacterRoute, async (c) => {
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
     const members = new OrganizationMembersRepository(db);
-    const characters = new CharactersRepository(db);
-    const claimRequests = new CharacterClaimRequestsRepository(db);
     const organization = await requireOrganizationByIdentifier(
       organizations,
       params.data.organization,
     );
     await requireOrganizationManager(members, organization.id, session.user.id);
-    const character = await requireOrganizationCharacter(
-      characters,
-      organization.id,
-      params.data.characterId,
-    );
+    const workflow = new OrganizationCharacterClaimWorkflowService(db);
 
     const mode =
       body.data.mode ??
@@ -1668,10 +1712,10 @@ organizationsRouter.openapi(claimOrganizationCharacterRoute, async (c) => {
           : "assign");
 
     if (mode === "unassign") {
-      const updated = await characters.update(character.id, {
-        claimedByUserId: null,
+      const updated = await workflow.unassignCharacter({
+        characterId: params.data.characterId,
+        organizationId: organization.id,
       });
-      await cancelPendingCharacterClaimRequests(db, organization.id, character.id);
       return c.json(
         {
           character: await getCharacterDetailResponse(db, organization.id, updated.id),
@@ -1682,77 +1726,43 @@ organizationsRouter.openapi(claimOrganizationCharacterRoute, async (c) => {
       );
     }
 
-    const membership = await requireActiveOrganizationMemberByReference(
-      members,
-      organization.id,
-      {
-        memberId: body.data.memberId,
-        userId: body.data.userId,
-      },
-    );
-
-    if (
-      character.claimed_by_user_id !== null &&
-      character.claimed_by_user_id !== membership.user_id &&
-      mode !== "transfer"
-    ) {
-      throw new ConflictError("Character is already claimed by another member", {
-        code: "CHARACTER_ALREADY_CLAIMED",
+    if (body.data.status === "pending_confirmation" || mode === "transfer") {
+      const request = await workflow.createClaimRequest({
+        characterId: params.data.characterId,
+        organizationId: organization.id,
+        requestedByUserId: session.user.id,
+        targetMemberId: body.data.memberId,
+        targetUserId: body.data.userId,
       });
-    }
-
-    if (body.data.status === "pending_confirmation") {
-      const existingRequest = await claimRequests.findPendingByCharacterAndUser(
-        character.id,
-        membership.user_id,
-      );
-
-      const request =
-        existingRequest ??
-        (await claimRequests.create({
-          characterId: character.id,
-          organizationId: organization.id,
-          requestedByUserId: session.user.id,
-          targetMemberId: membership.id,
-          targetUserId: membership.user_id,
-        }));
-
       return c.json(
         {
-          character: await getCharacterDetailResponse(db, organization.id, character.id),
+          character: await getCharacterDetailResponse(
+            db,
+            organization.id,
+            params.data.characterId,
+          ),
           claimRequest: toCharacterClaimRequestResponse(request),
-          message: "Character claim request created successfully.",
+          message:
+            mode === "transfer"
+              ? "Character transfer confirmation requested successfully."
+              : "Character claim request created successfully.",
         },
         200,
       );
     }
 
-    const pendingRequest = await claimRequests.findPendingByCharacterAndUser(
-      character.id,
-      membership.user_id,
-    );
-    const updatedCharacter = await characters.update(character.id, {
-      claimedByUserId: membership.user_id,
+    const updatedCharacter = await workflow.assignCharacter({
+      characterId: params.data.characterId,
+      organizationId: organization.id,
+      targetMemberId: body.data.memberId,
+      targetUserId: body.data.userId,
     });
-    await cancelPendingCharacterClaimRequests(db, organization.id, character.id);
-    const acceptedRequest = pendingRequest
-      ? await claimRequests.update(pendingRequest.id, {
-          status: "accepted",
-          targetMemberId: membership.id,
-          targetUserId: membership.user_id,
-        })
-      : null;
 
     return c.json(
       {
         character: await getCharacterDetailResponse(db, organization.id, updatedCharacter.id),
-        claimRequest: acceptedRequest
-          ? toCharacterClaimRequestResponse(acceptedRequest)
-          : null,
-        message:
-          mode === "transfer"
-            ? "Character transferred successfully."
-            : "Character assigned successfully.",
+        claimRequest: null,
+        message: "Character assigned successfully.",
       },
       200,
     );
@@ -1795,52 +1805,87 @@ organizationsRouter.openapi(createOrganizationCharacterClaimRequestRoute, async 
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
     const members = new OrganizationMembersRepository(db);
-    const characters = new CharactersRepository(db);
-    const claimRequests = new CharacterClaimRequestsRepository(db);
     const organization = await requireOrganizationByIdentifier(
       organizations,
       params.data.organization,
     );
     await requireOrganizationManager(members, organization.id, session.user.id);
-    const character = await requireOrganizationCharacter(
-      characters,
-      organization.id,
-      params.data.characterId,
-    );
-    const membership = await requireActiveOrganizationMemberByReference(
-      members,
-      organization.id,
-      {
-        memberId: body.data.memberId,
-        userId: body.data.userId,
-      },
-    );
-    const existing = await claimRequests.findPendingByCharacterAndUser(
-      character.id,
-      membership.user_id,
-    );
-
-    if (existing) {
-      throw new ConflictError("Pending character claim request already exists", {
-        code: "CHARACTER_CLAIM_REQUEST_EXISTS",
-      });
-    }
-
-    const request = await claimRequests.create({
-      characterId: character.id,
+    const workflow = new OrganizationCharacterClaimWorkflowService(db);
+    const request = await workflow.createClaimRequest({
+      characterId: params.data.characterId,
       organizationId: organization.id,
       requestedByUserId: session.user.id,
-      targetMemberId: membership.id,
-      targetUserId: membership.user_id,
+      targetMemberId: body.data.memberId,
+      targetUserId: body.data.userId,
     });
 
     return c.json(
       {
-        character: await getCharacterDetailResponse(db, organization.id, character.id),
+        character: await getCharacterDetailResponse(
+          db,
+          organization.id,
+          params.data.characterId,
+        ),
         claimRequest: toCharacterClaimRequestResponse(request),
         message: "Character claim request created successfully.",
       },
       201,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(assignOrganizationCharacterRoute, async (c) => {
+  const params = assignOrganizationCharacterRoute.request.params.safeParse(c.req.param());
+  const schema =
+    assignOrganizationCharacterRoute.request.body.content["application/json"].schema;
+  const body = schema.safeParse(await c.req.json());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  if (!body.success) {
+    return c.json(
+      validationErrorFromIssues(body.error.issues, "body", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = getRouteSession(c);
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+    await requireOrganizationManager(
+      new OrganizationMembersRepository(db),
+      organization.id,
+      session.user.id,
+    );
+    const workflow = new OrganizationCharacterClaimWorkflowService(db);
+    const updated = await workflow.assignCharacter({
+      characterId: params.data.characterId,
+      organizationId: organization.id,
+      targetMemberId: body.data.memberId,
+      targetUserId: body.data.userId,
+    });
+
+    return c.json(
+      {
+        character: await getCharacterDetailResponse(db, organization.id, updated.id),
+        claimRequest: null,
+        message: "Character assigned successfully.",
+      },
+      200,
     );
   } catch (error) {
     if (error instanceof AppError) {
@@ -1868,27 +1913,66 @@ organizationsRouter.openapi(unclaimOrganizationCharacterRoute, async (c) => {
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
     const members = new OrganizationMembersRepository(db);
-    const characters = new CharactersRepository(db);
     const organization = await requireOrganizationByIdentifier(
       organizations,
       parsed.data.organization,
     );
     await requireOrganizationManager(members, organization.id, session.user.id);
-    const character = await requireOrganizationCharacter(
-      characters,
-      organization.id,
-      parsed.data.characterId,
-    );
-    const updated = await characters.update(character.id, {
-      claimedByUserId: null,
+    const workflow = new OrganizationCharacterClaimWorkflowService(db);
+    const updated = await workflow.unassignCharacter({
+      characterId: parsed.data.characterId,
+      organizationId: organization.id,
     });
-    await cancelPendingCharacterClaimRequests(db, organization.id, character.id);
 
     return c.json(
       {
         character: await getCharacterDetailResponse(db, organization.id, updated.id),
         claimRequest: null,
         message: "Character unclaimed successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(unassignOrganizationCharacterRoute, async (c) => {
+  const parsed = unassignOrganizationCharacterRoute.request.params.safeParse(c.req.param());
+
+  if (!parsed.success) {
+    return c.json(
+      validationErrorFromIssues(parsed.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = getRouteSession(c);
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+    await requireOrganizationManager(
+      new OrganizationMembersRepository(db),
+      organization.id,
+      session.user.id,
+    );
+    const workflow = new OrganizationCharacterClaimWorkflowService(db);
+    const updated = await workflow.unassignCharacter({
+      characterId: parsed.data.characterId,
+      organizationId: organization.id,
+    });
+
+    return c.json(
+      {
+        character: await getCharacterDetailResponse(db, organization.id, updated.id),
+        claimRequest: null,
+        message: "Character unassigned successfully.",
       },
       200,
     );
@@ -2136,6 +2220,7 @@ organizationsRouter.openapi(organizationPendingMembersRoute, async (c) => {
   try {
     const db = new D1Client(c.env.APP_DB);
     const organization = getRouteOrganization(c);
+    const now = currentIsoTimestamp();
 
     const pendingMembers = await db.all<{
       character_id: number | null;
@@ -2198,8 +2283,10 @@ organizationsRouter.openapi(organizationPendingMembersRoute, async (c) => {
        LEFT JOIN games g ON g.id = c.game_id
        WHERE m.organization_id = ?
          AND m.status = 'pending'
+         AND (p.expires_at IS NULL OR p.expires_at > ?)
        ORDER BY m.id ASC`,
       organization.id,
+      now,
     );
 
     return c.json(
@@ -2281,6 +2368,7 @@ organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
       organizations,
       parsed.data.organization,
     );
+    const now = currentIsoTimestamp();
 
     const characters = await db.all<{
       game_id: number | null;
@@ -2318,7 +2406,9 @@ organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
          g.source_id,
          g.type
        FROM characters c
-       LEFT JOIN organization_member_pending_actions p ON p.character_id = c.id
+       LEFT JOIN organization_member_pending_actions p
+         ON p.character_id = c.id
+        AND (p.expires_at IS NULL OR p.expires_at > ?)
        LEFT JOIN organization_games og
          ON og.organization_id = c.organization_id
         AND og.game_id = c.game_id
@@ -2329,6 +2419,7 @@ organizationsRouter.openapi(organizationAvailableCharactersRoute, async (c) => {
          AND c.claimed_by_user_id IS NULL
          AND p.id IS NULL
        ORDER BY c.id ASC`,
+      now,
       organization.id,
     );
 
@@ -3187,55 +3278,11 @@ organizationsRouter.openapi(approveOrganizationMemberRoute, async (c) => {
   try {
     const db = new D1Client(c.env.APP_DB);
     const organization = getRouteOrganization(c);
-    const members = new OrganizationMembersRepository(db);
-    const characters = new CharactersRepository(db);
-    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
-
-    const member = await members.findById(params.data.memberId);
-    if (!member || member.organization_id !== organization.id) {
-      throw new NotFoundError("Organization membership not found");
-    }
-
-    if (member.status !== "pending") {
-      throw new ConflictError("Membership is not pending approval", {
-        code: "ORGANIZATION_MEMBER_NOT_PENDING",
-      });
-    }
-
-    const pendingAction = await pendingActions.findByMemberId(member.id);
-    if (!pendingAction || pendingAction.kind !== "apply" || !pendingAction.character_id) {
-      throw new ConflictError(
-        "Pending membership is missing its reserved character",
-        {
-          code: "ORGANIZATION_MEMBER_CHARACTER_REQUIRED",
-        },
-      );
-    }
-
-    const character = await characters.findById(pendingAction.character_id);
-    if (!character || character.organization_id !== organization.id) {
-      throw new ConflictError("Pending membership character is no longer available", {
-        code: "ORGANIZATION_MEMBER_CHARACTER_REQUIRED",
-      });
-    }
-
-    if (
-      character.claimed_by_user_id !== null &&
-      character.claimed_by_user_id !== member.user_id
-    ) {
-      throw new ConflictError("Pending membership character is already claimed", {
-        code: "CHARACTER_ALREADY_CLAIMED",
-      });
-    }
-
-    if (character.claimed_by_user_id !== member.user_id) {
-      await characters.update(character.id, {
-        claimedByUserId: member.user_id,
-      });
-    }
-
-    const updated = await members.updateStatus(member.id, "active");
-    await pendingActions.deleteByMemberId(member.id);
+    const workflow = new OrganizationMembershipWorkflowService(db);
+    const updated = await workflow.approvePendingApply({
+      memberId: params.data.memberId,
+      organizationId: organization.id,
+    });
 
     return c.json(
       {
@@ -3270,41 +3317,145 @@ organizationsRouter.openapi(rejectOrganizationMemberRoute, async (c) => {
     const session = getRouteSession(c);
     const db = new D1Client(c.env.APP_DB);
     const organization = getRouteOrganization(c);
-    const members = new OrganizationMembersRepository(db);
-    const characters = new CharactersRepository(db);
-    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
-
-    const member = await members.findById(params.data.memberId);
-    if (!member || member.organization_id !== organization.id) {
-      throw new NotFoundError("Organization membership not found");
-    }
-
-    if (member.status !== "pending") {
-      throw new ConflictError("Membership is not pending approval", {
-        code: "ORGANIZATION_MEMBER_NOT_PENDING",
-      });
-    }
-
-    const pendingAction = await pendingActions.findByMemberId(member.id);
-    if (!pendingAction) {
-      throw new ConflictError("Pending membership details were not found", {
-        code: "ORGANIZATION_MEMBER_PENDING_DETAILS_MISSING",
-      });
-    }
-
-    if (pendingAction.character_id && pendingAction.requested_character_name) {
-      await characters.delete(pendingAction.character_id, {
-        deletedByUserId: session.user.id,
-      });
-    }
-
-    await pendingActions.deleteByMemberId(member.id);
-    const updated = await members.softRemove(member.id);
+    const workflow = new OrganizationMembershipWorkflowService(db);
+    const updated = await workflow.rejectPendingMembership({
+      actorUserId: session.user.id,
+      memberId: params.data.memberId,
+      organizationId: organization.id,
+    });
 
     return c.json(
       {
         member: toOrganizationMemberResponse(updated),
         message: "Pending membership rejected successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(cancelOrganizationMemberRoute, async (c) => {
+  const params = cancelOrganizationMemberRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = await new SessionAuthService(c.env).requireActiveUser(getSessionCookie(c));
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const members = new OrganizationMembersRepository(db);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
+    const managerMembership = await members.findByOrganizationAndUser(
+      organization.id,
+      session.user.id,
+    );
+    const allowManagerOverride =
+      managerMembership?.status === "active" &&
+      (managerMembership.role === "owner" || managerMembership.role === "admin");
+    const workflow = new OrganizationMembershipWorkflowService(db);
+    const updated = await workflow.cancelPendingMembership({
+      actorUserId: session.user.id,
+      allowManagerOverride,
+      memberId: params.data.memberId,
+      organizationId: organization.id,
+    });
+
+    return c.json(
+      {
+        member: toOrganizationMemberResponse(updated),
+        message: "Pending membership cancelled successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(leaveOrganizationMemberRoute, async (c) => {
+  const params = leaveOrganizationMemberRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = getRouteSession(c);
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+    const workflow = new OrganizationMembershipWorkflowService(db);
+    const updated = await workflow.leaveActiveMembership({
+      actorUserId: session.user.id,
+      memberId: params.data.memberId,
+      organizationId: organization.id,
+    });
+
+    return c.json(
+      {
+        member: toOrganizationMemberResponse(updated),
+        message: "Member left the organization successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(removeOrganizationMemberRoute, async (c) => {
+  const params = removeOrganizationMemberRoute.request.params.safeParse(c.req.param());
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const db = new D1Client(c.env.APP_DB);
+    const organization = getRouteOrganization(c);
+    const workflow = new OrganizationMembershipWorkflowService(db);
+    const updated = await workflow.removeActiveMembership({
+      memberId: params.data.memberId,
+      organizationId: organization.id,
+    });
+
+    return c.json(
+      {
+        member: toOrganizationMemberResponse(updated),
+        message: "Member removed successfully.",
       },
       200,
     );
@@ -3454,75 +3605,16 @@ organizationsRouter.openapi(acceptOrganizationInviteRoute, async (c) => {
     const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
-    const members = new OrganizationMembersRepository(db);
-    const characters = new CharactersRepository(db);
-    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
     const organization = await requireOrganizationByIdentifier(
       organizations,
       params.data.organization,
     );
-
-    const member = await members.findById(params.data.memberId);
-    if (!member || member.organization_id !== organization.id) {
-      throw new NotFoundError("Organization membership not found");
-    }
-
-    if (member.user_id !== session.user.id) {
-      throw new ForbiddenError("You are not allowed to accept this invitation", {
-        code: "ORGANIZATION_INVITE_ACCEPT_FORBIDDEN",
-      });
-    }
-
-    if (member.status !== "pending") {
-      throw new ConflictError("Invitation is not pending", {
-        code: "ORGANIZATION_MEMBER_NOT_PENDING",
-      });
-    }
-
-    const pendingAction = await pendingActions.findByMemberId(member.id);
-    if (!pendingAction || pendingAction.kind !== "invite" || !pendingAction.character_id) {
-      throw new ConflictError("Invitation details were not found", {
-        code: "ORGANIZATION_INVITE_DETAILS_MISSING",
-      });
-    }
-
-    const existingCharacterClaims = await characters.listByOrganizationAndUser(
-      organization.id,
-      session.user.id,
-    );
-    if (existingCharacterClaims.length > 0) {
-      throw new ConflictError(
-        "You already have a claimed character in this organization",
-        {
-          code: "USER_ALREADY_HAS_ORGANIZATION_CHARACTER",
-        },
-      );
-    }
-
-    const character = await characters.findById(pendingAction.character_id);
-    if (!character || character.organization_id !== organization.id) {
-      throw new ConflictError("Invitation character is no longer available", {
-        code: "ORGANIZATION_INVITE_DETAILS_MISSING",
-      });
-    }
-
-    if (
-      character.claimed_by_user_id !== null &&
-      character.claimed_by_user_id !== session.user.id
-    ) {
-      throw new ConflictError("Invitation character is already claimed", {
-        code: "CHARACTER_ALREADY_CLAIMED",
-      });
-    }
-
-    if (character.claimed_by_user_id !== session.user.id) {
-      await characters.update(character.id, {
-        claimedByUserId: session.user.id,
-      });
-    }
-
-    const updated = await members.updateStatus(member.id, "active");
-    await pendingActions.deleteByMemberId(member.id);
+    const workflow = new OrganizationMembershipWorkflowService(db);
+    const updated = await workflow.acceptInvite({
+      actorUserId: session.user.id,
+      memberId: params.data.memberId,
+      organizationId: organization.id,
+    });
 
     return c.json(
       {
@@ -3557,51 +3649,174 @@ organizationsRouter.openapi(declineOrganizationInviteRoute, async (c) => {
     const session = await sessionAuth.requireActiveUser(getSessionCookie(c));
     const db = new D1Client(c.env.APP_DB);
     const organizations = new OrganizationsRepository(db);
-    const members = new OrganizationMembersRepository(db);
-    const characters = new CharactersRepository(db);
-    const pendingActions = new OrganizationMemberPendingActionsRepository(db);
     const organization = await requireOrganizationByIdentifier(
       organizations,
       params.data.organization,
     );
-
-    const member = await members.findById(params.data.memberId);
-    if (!member || member.organization_id !== organization.id) {
-      throw new NotFoundError("Organization membership not found");
-    }
-
-    if (member.user_id !== session.user.id) {
-      throw new ForbiddenError("You are not allowed to decline this invitation", {
-        code: "ORGANIZATION_INVITE_DECLINE_FORBIDDEN",
-      });
-    }
-
-    if (member.status !== "pending") {
-      throw new ConflictError("Invitation is not pending", {
-        code: "ORGANIZATION_MEMBER_NOT_PENDING",
-      });
-    }
-
-    const pendingAction = await pendingActions.findByMemberId(member.id);
-    if (!pendingAction || pendingAction.kind !== "invite") {
-      throw new ConflictError("Invitation details were not found", {
-        code: "ORGANIZATION_INVITE_DETAILS_MISSING",
-      });
-    }
-
-    if (pendingAction.character_id && pendingAction.requested_character_name) {
-      await characters.delete(pendingAction.character_id, {
-        deletedByUserId: session.user.id,
-      });
-    }
-
-    await pendingActions.deleteByMemberId(member.id);
-    const updated = await members.softRemove(member.id);
+    const workflow = new OrganizationMembershipWorkflowService(db);
+    const updated = await workflow.declineInvite({
+      actorUserId: session.user.id,
+      memberId: params.data.memberId,
+      organizationId: organization.id,
+    });
 
     return c.json(
       {
         member: toOrganizationMemberResponse(updated),
         message: "Invitation declined successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(acceptOrganizationCharacterClaimRequestRoute, async (c) => {
+  const params = acceptOrganizationCharacterClaimRequestRoute.request.params.safeParse(
+    c.req.param(),
+  );
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = await new SessionAuthService(c.env).requireActiveUser(getSessionCookie(c));
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
+    const workflow = new OrganizationCharacterClaimWorkflowService(db);
+    const result = await workflow.acceptClaimRequest({
+      actorUserId: session.user.id,
+      organizationId: organization.id,
+      requestId: params.data.requestId,
+    });
+
+    return c.json(
+      {
+        character: await getCharacterDetailResponse(db, organization.id, result.character.id),
+        claimRequest: toCharacterClaimRequestResponse(result.request),
+        message: "Character claim request accepted successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(declineOrganizationCharacterClaimRequestRoute, async (c) => {
+  const params = declineOrganizationCharacterClaimRequestRoute.request.params.safeParse(
+    c.req.param(),
+  );
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = await new SessionAuthService(c.env).requireActiveUser(getSessionCookie(c));
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const claimRequests = new CharacterClaimRequestsRepository(db);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
+    const workflow = new OrganizationCharacterClaimWorkflowService(db);
+    const request = await workflow.declineClaimRequest({
+      actorUserId: session.user.id,
+      organizationId: organization.id,
+      requestId: params.data.requestId,
+    });
+
+    return c.json(
+      {
+        character: await getCharacterDetailResponse(db, organization.id, request.character_id),
+        claimRequest: toCharacterClaimRequestResponse(
+          (await claimRequests.findById(request.id)) ?? request,
+        ),
+        message: "Character claim request declined successfully.",
+      },
+      200,
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return c.json(
+        buildErrorResponseBody(c, error),
+        error.status as 401 | 403 | 404 | 409,
+      );
+    }
+    throw error;
+  }
+});
+
+organizationsRouter.openapi(cancelOrganizationCharacterClaimRequestRoute, async (c) => {
+  const params = cancelOrganizationCharacterClaimRequestRoute.request.params.safeParse(
+    c.req.param(),
+  );
+
+  if (!params.success) {
+    return c.json(
+      validationErrorFromIssues(params.error.issues, "params", ensureRequestId(c)),
+      422,
+    );
+  }
+
+  try {
+    const session = await new SessionAuthService(c.env).requireActiveUser(getSessionCookie(c));
+    const db = new D1Client(c.env.APP_DB);
+    const organizations = new OrganizationsRepository(db);
+    const members = new OrganizationMembersRepository(db);
+    const claimRequests = new CharacterClaimRequestsRepository(db);
+    const organization = await requireOrganizationByIdentifier(
+      organizations,
+      params.data.organization,
+    );
+    const managerMembership = await members.findByOrganizationAndUser(
+      organization.id,
+      session.user.id,
+    );
+    const allowManagerOverride =
+      managerMembership?.status === "active" &&
+      (managerMembership.role === "owner" || managerMembership.role === "admin");
+    const workflow = new OrganizationCharacterClaimWorkflowService(db);
+    const request = await workflow.cancelClaimRequest({
+      actorUserId: session.user.id,
+      allowManagerOverride,
+      organizationId: organization.id,
+      requestId: params.data.requestId,
+    });
+
+    return c.json(
+      {
+        character: await getCharacterDetailResponse(db, organization.id, request.character_id),
+        claimRequest: toCharacterClaimRequestResponse(
+          (await claimRequests.findById(request.id)) ?? request,
+        ),
+        message: "Character claim request cancelled successfully.",
       },
       200,
     );

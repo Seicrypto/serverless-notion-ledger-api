@@ -18,8 +18,8 @@
     "test:ledger": "node scripts/run-ts-tests.mjs tests/ledger-state-machines.test.ts tests/ledger-lifecycle.test.ts",
     "test:d1:local": "node scripts/run-ts-entry.mjs scripts/test-d1-local-integration.ts",
     "test:migrations:smoke": "node scripts/run-ts-entry.mjs scripts/test-migrations-smoke.ts",
-    "test:repositories": "node scripts/run-ts-tests.mjs tests/repositories.test.ts tests/repositories-official-staffs.test.ts",
-    "test:all": "node scripts/run-ts-tests.mjs tests/repositories.test.ts tests/repositories-official-staffs.test.ts tests/ledger-state-machines.test.ts tests/ledger-lifecycle.test.ts tests/assets-services.test.ts"
+    "test:repositories": "node scripts/run-ts-tests.mjs tests/repositories.test.ts tests/repositories-official-staffs.test.ts tests/organization-workflows.test.ts",
+    "test:all": "node scripts/run-ts-tests.mjs tests/repositories.test.ts tests/repositories-official-staffs.test.ts tests/organization-workflows.test.ts tests/ledger-state-machines.test.ts tests/ledger-lifecycle.test.ts tests/assets-services.test.ts"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
