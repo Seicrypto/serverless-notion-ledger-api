@@ -1158,7 +1158,10 @@ test("dashboard summary counts unsettled events and disbursement states", async 
       organizationId: fixture.organization.id,
       title: "Ready Dashboard Event",
     });
-    await addEventParticipants(fixture.db, readyEvent.id, [fixture.characterTwo.id]);
+    await addEventParticipants(fixture.db, readyEvent.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
     await eventService.markReadyForSettlement(readyEvent.id);
 
     const settlementOne = await settlementService.createDraftSettlement({
@@ -1174,12 +1177,17 @@ test("dashboard summary counts unsettled events and disbursement states", async 
     });
     await settlementService.markCalculated(settlementOne.id);
     const allocationOne = await allocationService.createPendingAllocation({
-      amount: 1000,
+      amount: 500,
       characterId: fixture.characterTwo.id,
       settlementId: settlementOne.id,
     });
+    await allocationService.createPendingAllocation({
+      amount: 500,
+      characterId: fixture.characterOne.id,
+      settlementId: settlementOne.id,
+    });
     await claimService.recordClaim({
-      amount: 1000,
+      amount: 500,
       claimedAt: "2026-08-27T11:30:00.000Z",
       claimedByCharacterId: fixture.characterTwo.id,
       settlementAllocationId: allocationOne.id,
@@ -1197,6 +1205,42 @@ test("dashboard summary counts unsettled events and disbursement states", async 
     });
     await settlementService.markCalculated(settlementTwo.id);
 
+    const settlementThree = await settlementService.createDraftSettlement({
+      decidedAt: "2026-08-27T13:00:00.000Z",
+      grossAmount: 600,
+      netAmount: 600,
+      organizationId: fixture.organization.id,
+      payerRef: String(fixture.characterOne.id),
+      payerType: "character",
+      settlementKey: "st-dashboard-3",
+      title: "Dashboard Settlement Three",
+    });
+    await settlementService.markCalculated(settlementThree.id);
+    const allocationThreeA = await allocationService.createPendingAllocation({
+      amount: 300,
+      characterId: fixture.characterOne.id,
+      settlementId: settlementThree.id,
+    });
+    const allocationThreeB = await allocationService.createPendingAllocation({
+      amount: 300,
+      characterId: fixture.characterTwo.id,
+      settlementId: settlementThree.id,
+    });
+    const claimThreeA = await claimService.recordClaim({
+      amount: 300,
+      claimedAt: "2026-08-27T13:10:00.000Z",
+      claimedByCharacterId: fixture.characterOne.id,
+      settlementAllocationId: allocationThreeA.id,
+    });
+    await claimService.confirmClaim(claimThreeA.id);
+    const claimThreeB = await claimService.recordClaim({
+      amount: 300,
+      claimedAt: "2026-08-27T13:11:00.000Z",
+      claimedByCharacterId: fixture.characterTwo.id,
+      settlementAllocationId: allocationThreeB.id,
+    });
+    await claimService.confirmClaim(claimThreeB.id);
+
     const summary = await dashboardService.getOrganizationSummary({
       organization: {
         id: fixture.organization.id,
@@ -1205,7 +1249,7 @@ test("dashboard summary counts unsettled events and disbursement states", async 
       },
     });
 
-    assert.equal(summary.summary.settlementCount, 2);
+    assert.equal(summary.summary.settlementCount, 3);
     assert.equal(summary.summary.unsettledEventCount, 1);
     assert.equal(summary.summary.disbursementInProgressCount, 1);
     assert.equal(summary.summary.disbursementNotStartedCount, 1);
