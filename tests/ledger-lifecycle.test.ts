@@ -20,6 +20,7 @@ import { EventParticipantsRepository } from "../src/repositories/event-participa
 import { GamesRepository } from "../src/repositories/games-repository";
 import { OrganizationGamesRepository } from "../src/repositories/organization-games-repository";
 import { OrganizationsRepository } from "../src/repositories/organizations-repository";
+import { SettlementsRepository } from "../src/repositories/settlements-repository";
 import { UsersRepository } from "../src/repositories/users-repository";
 import { createTestDatabase } from "./support/test-database";
 import {
@@ -576,6 +577,116 @@ test("event summary lookup returns compact user-facing event rows with game and 
 
     assert.equal(secondPage.events.length, 1);
     assert.equal(secondPage.events[0]?.event.title, "Older Matching Event");
+    await addEventParticipants(
+      fixture.db,
+      secondPage.events[0]!.event.id,
+      [fixture.characterOne.id],
+    );
+
+    await new EventSettlementOrchestrationService(
+      fixture.db,
+    ).settleEventWithAllocations({
+      decidedAt: "2026-08-27T12:00:00.000Z",
+      eventId: secondPage.events[0]!.event.id,
+      grossAmount: 100,
+      netAmount: 100,
+      organizationId: fixture.organization.id,
+      recipients: [{ amount: 100, characterId: fixture.characterOne.id }],
+      title: "Settled For Summary Filter",
+    });
+
+    const settleableOnly = await listLedgerEventSummaryLookup({
+      db: fixture.db as unknown as D1Client,
+      gameId: fixture.game.id,
+      limit: 10,
+      offset: 0,
+      organizationId: fixture.organization.id,
+    });
+    assert.equal(
+      settleableOnly.events.some(
+        (candidate) => candidate.event.id === secondPage.events[0]!.event.id,
+      ),
+      false,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("high-level settle compensates partial failures so events remain retryable", async () => {
+  const fixture = await createLedgerFixture();
+  try {
+    const eventService = new EventLifecycleService(fixture.db);
+    const event = await eventService.createEvent({
+      eventKey: "evt-settle-rollback-1",
+      occurredAt: "2026-08-31T09:00:00.000Z",
+      organizationId: fixture.organization.id,
+      title: "Rollback Event",
+    });
+    await addEventParticipants(fixture.db, event.id, [
+      fixture.characterOne.id,
+      fixture.characterTwo.id,
+    ]);
+
+    let failedInsertCount = 0;
+    const flakyDb: DatabaseClient = {
+      all: (...args) => fixture.db.all(...args),
+      first: async <T>(sql: string, ...bindings: unknown[]) => {
+        if (sql.includes("INSERT INTO settlement_allocations")) {
+          failedInsertCount += 1;
+          if (failedInsertCount === 2) {
+            throw new Error("D1_ERROR: simulated allocation insert failure");
+          }
+        }
+        return fixture.db.first<T>(sql, ...bindings);
+      },
+      run: (...args) => fixture.db.run(...args),
+    };
+
+    await assert.rejects(
+      () =>
+        new EventSettlementOrchestrationService(flakyDb).settleEventWithAllocations({
+          allocationMode: "manual",
+          decidedAt: "2026-08-31T10:00:00.000Z",
+          eventId: event.id,
+          grossAmount: 300,
+          netAmount: 300,
+          organizationId: fixture.organization.id,
+          recipients: [
+            { amount: 100, characterId: fixture.characterOne.id },
+            { amount: 200, characterId: fixture.characterTwo.id },
+          ],
+          title: "Rollback Settlement",
+        }),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message.includes("D1_ERROR: simulated allocation insert failure"),
+    );
+
+    const settlements = await new SettlementsRepository(fixture.db).listByEvent(event.id);
+    assert.equal(settlements.length, 1);
+    assert.equal(settlements[0]?.status, "cancelled");
+
+    const eventAfterFailure = await eventService.syncStatusFromSettlements(event.id);
+    assert.equal(eventAfterFailure.status, "ready_for_settlement");
+
+    const retry = await new EventSettlementOrchestrationService(
+      fixture.db,
+    ).settleEventWithAllocations({
+      allocationMode: "manual",
+      decidedAt: "2026-08-31T10:05:00.000Z",
+      eventId: event.id,
+      grossAmount: 300,
+      netAmount: 300,
+      organizationId: fixture.organization.id,
+      recipients: [
+        { amount: 100, characterId: fixture.characterOne.id },
+        { amount: 200, characterId: fixture.characterTwo.id },
+      ],
+      title: "Retry Settlement",
+    });
+    assert.equal(retry.allocations.length, 2);
+    assert.equal(retry.settlement.status, "calculated");
   } finally {
     await fixture.cleanup();
   }
