@@ -638,6 +638,18 @@ const eventSummaryLookupQuerySchema = z
     gameId: z.coerce.number().int().positive(),
     limit: z.coerce.number().int().min(1).max(100).optional(),
     offset: z.coerce.number().int().min(0).optional(),
+    status: z
+      .enum([
+        "open",
+        "ready_for_settlement",
+        "partially_settled",
+        "settled",
+        "cancelled",
+      ])
+      .optional(),
+    statusGroup: z
+      .enum(["unsettled", "settleable", "settled", "cancelled"])
+      .optional(),
     toOccurredAt: z.string().datetime().optional(),
   })
   .openapi("LedgerEventSummaryLookupQuery");

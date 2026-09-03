@@ -13415,6 +13415,35 @@
           {
             "schema": {
               "type": "string",
+              "enum": [
+                "open",
+                "ready_for_settlement",
+                "partially_settled",
+                "settled",
+                "cancelled"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "unsettled",
+                "settleable",
+                "settled",
+                "cancelled"
+              ]
+            },
+            "required": false,
+            "name": "statusGroup",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "format": "date-time"
             },
             "required": false,

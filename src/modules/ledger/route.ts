@@ -1008,6 +1008,8 @@ export async function listLedgerEventSummaryLookup(input: {
   limit: number;
   offset: number;
   organizationId: number;
+  status?: EventStatus;
+  statusGroup?: "unsettled" | "settleable" | "settled" | "cancelled";
   toOccurredAt?: string;
 }): Promise<{
   events: EventSummaryLookupItem[];
@@ -1019,6 +1021,15 @@ export async function listLedgerEventSummaryLookup(input: {
 }> {
   const whereClauses = ["e.organization_id = ?", "e.game_id = ?"];
   const bindings: Array<number | string> = [input.organizationId, input.gameId];
+
+  if (input.status) {
+    whereClauses.push("e.status = ?");
+    bindings.push(input.status);
+  } else {
+    const statuses = mapEventStatusGroup(input.statusGroup ?? "settleable");
+    whereClauses.push(`e.status IN (${statuses.map(() => "?").join(", ")})`);
+    bindings.push(...statuses);
+  }
 
   if (input.fromOccurredAt) {
     whereClauses.push("e.occurred_at >= ?");
@@ -1108,6 +1119,8 @@ organizationLedgerRouter.openapi(listLedgerEventSummariesRoute, async (c) => {
       limit,
       offset,
       organizationId: organization.id,
+      status: parsed.data.status,
+      statusGroup: parsed.data.statusGroup,
       toOccurredAt: parsed.data.toOccurredAt,
     });
 

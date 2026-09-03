@@ -1,7 +1,7 @@
 import type { DatabaseClient } from "../../infrastructure/database/database-client";
 import { ConflictError } from "../../lib/errors";
 import { SettlementsRepository } from "../../repositories/settlements-repository";
-import type { SettlementAllocationRecord } from "../../repositories/types";
+import type { SettlementAllocationRecord, SettlementRecord } from "../../repositories/types";
 import { AllocationLifecycleService } from "./allocation-lifecycle-service";
 import { EventLifecycleService } from "./event-lifecycle-service";
 import type {
@@ -66,31 +66,63 @@ export class EventSettlementOrchestrationService {
 
     const recipients = this.prepareRecipients(input);
 
-    const draftSettlement = await settlementLifecycle.settleEvent({
-      ...input,
-      eventId: event.id,
-    });
-    const settlement = await settlementLifecycle.markCalculated(draftSettlement.id);
+    let workingSettlement: SettlementRecord | null = null;
 
-    const allocations: SettlementAllocationRecord[] = [];
-    for (const recipient of recipients) {
-      const allocation = await allocationLifecycle.createPendingAllocation({
-        amount: recipient.amount,
-        characterId: recipient.characterId,
-        ratio: recipient.ratio,
-        settlementId: settlement.id,
-        weight: recipient.weight,
+    try {
+      const draftSettlement = await settlementLifecycle.settleEvent({
+        ...input,
+        eventId: event.id,
       });
-      allocations.push(allocation);
+      workingSettlement = await settlementLifecycle.markCalculated(draftSettlement.id);
+
+      const allocations: SettlementAllocationRecord[] = [];
+      for (const recipient of recipients) {
+        const allocation = await allocationLifecycle.createPendingAllocation({
+          amount: recipient.amount,
+          characterId: recipient.characterId,
+          ratio: recipient.ratio,
+          settlementId: workingSettlement.id,
+          weight: recipient.weight,
+        });
+        allocations.push(allocation);
+      }
+
+      const updatedEvent = await eventLifecycle.syncStatusFromSettlements(event.id);
+
+      return {
+        allocations,
+        event: updatedEvent,
+        settlement: workingSettlement,
+      };
+    } catch (error) {
+      if (workingSettlement) {
+        await this.rollbackSettlementFailure({
+          eventId: event.id,
+          settlement: workingSettlement,
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  private async rollbackSettlementFailure(input: {
+    eventId: number;
+    settlement: SettlementRecord;
+  }) {
+    try {
+      await new SettlementLifecycleService(this.db).cancelSettlement(
+        input.settlement.id,
+      );
+    } catch {
+      // Best-effort compensation keeps the original database error as the primary failure.
     }
 
-    const updatedEvent = await eventLifecycle.syncStatusFromSettlements(event.id);
-
-    return {
-      allocations,
-      event: updatedEvent,
-      settlement,
-    };
+    try {
+      await new EventLifecycleService(this.db).syncStatusFromSettlements(input.eventId);
+    } catch {
+      // Best-effort compensation keeps the original database error as the primary failure.
+    }
   }
 
   private prepareRecipients(
