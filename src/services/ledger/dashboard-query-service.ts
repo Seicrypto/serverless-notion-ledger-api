@@ -197,11 +197,25 @@ export class DashboardQueryService {
             AND s.status IN ('draft', 'calculated', 'paying')
             AND EXISTS (
               SELECT 1
-              FROM settlement_claims sc
-              INNER JOIN settlement_allocations sa
-                ON sa.id = sc.settlement_allocation_id
+              FROM settlement_allocations sa
               WHERE sa.settlement_id = s.id
-                AND sc.status != 'voided'
+                AND EXISTS (
+                  SELECT 1
+                  FROM settlement_claims sc
+                  WHERE sc.settlement_allocation_id = sa.id
+                    AND sc.status != 'voided'
+                )
+            )
+            AND EXISTS (
+              SELECT 1
+              FROM settlement_allocations sa
+              WHERE sa.settlement_id = s.id
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM settlement_claims sc
+                  WHERE sc.settlement_allocation_id = sa.id
+                    AND sc.status != 'voided'
+                )
             )) AS disbursement_in_progress_count,
          (SELECT COUNT(*)
           FROM settlements s
